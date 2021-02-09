@@ -11,8 +11,8 @@ def main(fn_vcf, fn_fas, fn_id, fn_n, fn_c):
                     "mason_simulator -iv hapB.vcf -ir " + fn_fas + " -o hapB1.fq -or hapB2.fq -oa hapB.sam  -n " + fn_n,
                     "samtools sort hapA.sam -o sorted_hapA.sam",
                     "python ../VCF_processing.py -v hapA.vcf -o hapA_het.vcf",
-                    "python3 liftover_sam.py -v hapA_het.vcf -s sorted_hapA.sam -f chr21_fasta.fa -o hapA_ref_bi.txt"
-                    "ipython bt2_ref_bi_graph.py"):
+                    "python3 ref_bi.py -v hapA_het.vcf -s sorted_hapA.sam -f chr21_fasta.fa -o hapA_ref_bi.txt"
+                    "ipython create_ref_bi_graph.py"):
         toDisplay = "I am about to run " + command
         #print(toDisplay, file = sys.stdout)
         call(command, shell=True)
