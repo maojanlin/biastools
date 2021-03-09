@@ -1,3 +1,9 @@
 *.vcf
 *.fna
 *.fa
+*.vcf.*
+*.?am
+*.f*
+find_reads_given_HET.py
+region_spec_refbi.py
+old_biastools.sh
