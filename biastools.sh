@@ -1,17 +1,23 @@
-#!/bin/sh
+bgzip -c renamed_chr21_NA12878.vcf > renamed_chr21_NA12878.vcf.gz
 
-bcftools view -e 'GT~"0|."' -G -o hapA.vcf renamed_chrv21_NA12878.vcf
+bcftools consensus -f GRCh38_chr21.fa -o GRCh38_chr21.hapA.fa -H 1 renamed_chr21_NA12878.vcf.gz
+bcftools consensus -f GRCh38_chr21.fa -o GRCh38_chr21.hapB.fa -H 2 renamed_chr21_NA12878.vcf.gz
 
-bcftools view -e 'GT~".|0"' -G -o hapB.vcf renamed_chr21_NA12878.vcf
+mason_simulator -ir GRCh38_chr21.hapA.fa -o hapA_1.fq -or hapA_2.fq -oa hapA.sam -n 3600000
+mason_simulator -ir GRCh38_chr21.hapB.fa -o hapB_1.fq -or hapB_2.fq -oa hapB.sam -n 3600000
 
-mason_simulator -iv hapA.vcf -ir GRCh38_chr21.fa -o hapA1.fq -or hapA2.fq -oa hapA.sam  -n 4800000
+./../bowtie2-2.4.2/bowtie2-build GRCh38_chr21.fa chr21_index
 
-mason_simulator -iv hapB.vcf -ir GRCh38_chr21.fa -o hapB1.fq -or hapB2.fq -oa hapB.sam  -n 4800000
 
-samtools sort hapA.sam -o sorted_hapA.sam
+./../bowtie2-2.4.2/bowtie2 -p 32 -x ../index/GRCh38_chr21/chr21_index -1 hapA_1.fq -2 hapA_2.fq -S hapA.bt2.sam
+./../bowtie2-2.4.2/bowtie2 -p 32 -x ../index/GRCh38_chr21/chr21_index -1 hapB_1.fq -2 hapB_2.fq -S hapB.bt2.sam
 
-samtools sort hapB.sam -o sorted_hapB.sam
+samtools sort -@ 16 -o hapA.bt2.sorted.sam hapA.bt2.sam
+samtools sort -@ 16 -o hapB.bt2.sorted.sam hapB.bt2.sam
 
-bcftools view -i 'GT="het"' -o chr21_het.vcf renamed_chr21_NA12878.vcf
+samtools merge -r bt2.sorted.sam hapA.bt2.sorted.sam hapB.bt2.sorted.sam
+samtools view -ho bt2.sorted.bam bt2.sorted.sam
 
-python3 ref_bi.py -v chr21_het.vcf -s sorted_hapA.sam -f chr21_fasta.fa -o hapA_ref_bi.txt
+bedtools intersect -a bt2.sorted.bam -b chr21_het.vcf | samtools view -h > bt2.sorted.het.sam
+
+python3 ref_bi.py -s bt2.sorted.het.sam -v chr21_het.vcf -f GRCh38_chr21.fa -o bt.bias
