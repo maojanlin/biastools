@@ -23,7 +23,7 @@ def main(fn_vcf, fn_sam, fn_fasta, fn_output):
     sam_file_name = fn_output+'.chr_sam.pickle'
 
     f = open(fn_output, 'w')
-
+    
     count_het = 0
     if not path.exists(vcf_file_name):
         chr_vcf = {}
@@ -162,7 +162,7 @@ def main(fn_vcf, fn_sam, fn_fasta, fn_output):
 
     chr_list = list(chr_vcf.keys())
     chr_list.sort()
-
+    #count = 0
     for chr in chr_list:
         het_site_list = chr_vcf[chr][0]
         options = chr_vcf[chr][1]
@@ -180,6 +180,9 @@ def main(fn_vcf, fn_sam, fn_fasta, fn_output):
         total_other_count = 0
 
         for pos in het_site_list:
+            #count+=1
+            #if count > 5:
+            #    break
             ref_count = 0
             alt_count = 0
             gap_count = 0
@@ -205,6 +208,9 @@ def main(fn_vcf, fn_sam, fn_fasta, fn_output):
 #                    count_b += 1.0#up to here
 
                 if pos in ran:
+                    #print("in here. pos is: ", pos, "   and align is: ", align)
+                    #print("sam[align]: ", sam_reads[i])
+                    #print("rg tag is: ", rg_tag[i])
                     #print("here, it overlaps")
                     if not have_started:
                         have_started = True
@@ -217,6 +223,7 @@ def main(fn_vcf, fn_sam, fn_fasta, fn_output):
                         count_b += 1.0#up to here 
                     try:
                         allele = sam_reads[i][pos - align]
+                        #print("allele: ", allele)
                         if allele in options[count_pos][0]:
                             ref_count += 1
                             total_ref_count += 1
