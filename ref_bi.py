@@ -24,20 +24,25 @@ def main(fn_vcf, fn_sam, fn_fasta, fn_output):
 
     f = open(fn_output, 'w')
     
+    # read the fn_vcf file, build the pickle file it is not exist
     count_het = 0
     if not path.exists(vcf_file_name):
         chr_vcf = {}
         for line in file:
-            if not line.startswith("##") and line.startswith("#"):
-                categories = line.split()
-                index_cat = count_line
-                for i in range(len(categories)):
-                    if categories[i] == 'REF':
-                        index_ref = i
-                    elif categories[i] == 'ALT':
-                        index_alt = i
-                    elif categories[i] == 'POS':
-                        index_pos = i
+            #if not line.startswith("##") and line.startswith("#"): # the "#" category line
+            if line.startswith("#"): # the "#" category line
+                if line.startswith("##"):
+                    pass
+                else:
+                    categories = line.split()
+                    index_cat = count_line
+                    for i in range(len(categories)):
+                        if categories[i] == 'REF':
+                            index_ref = i
+                        elif categories[i] == 'ALT':
+                            index_alt = i
+                        elif categories[i] == 'POS':
+                            index_pos = i
             elif count_line > index_cat and index_cat != 0:
                 now = line.split()
                 #print("line: ", line)
@@ -55,6 +60,7 @@ def main(fn_vcf, fn_sam, fn_fasta, fn_output):
                 elif chr not in chr_vcf.keys():
                     chr_vcf[chr] = [[], []]
 
+                #print(line)
                 if (len(now[index_alt]) == 1 and len(now[index_ref]) == 1):
                     chr_vcf[chr][0].append(int(now[index_pos]) - 1)
                     chr_vcf[chr][1].append([now[index_ref], now[index_alt]])
@@ -178,6 +184,7 @@ def main(fn_vcf, fn_sam, fn_fasta, fn_output):
         total_alt_count = 0
         total_gap_count = 0
         total_other_count = 0
+        hap_map = ref_hap_map(fn_vcf)
 
         for pos in het_site_list:
             #count+=1
@@ -189,7 +196,8 @@ def main(fn_vcf, fn_sam, fn_fasta, fn_output):
             other_count = 0
             reads_at_het = 0
             sum_mapq = 0
-            reference_hap = find_ref_hap(pos, fn_vcf)#added this
+            # reference_hap = find_ref_hap(pos, fn_vcf)#added this
+            reference_hap = hap_map[pos] # replace reading every time to a map
             count_a = 0.0#added this
             count_b = 0.0#added this
             read_dis = 0.0
@@ -291,6 +299,31 @@ def find_ref_hap(het_site, fn_vcf):
                 else:
                     return 'hapB'
     print("error, het site not found")
+
+
+def ref_hap_map(fn_vcf):
+    """
+    dict_hap_map{}
+    - key: het_site
+    - value: hapA or hapB
+    """
+    dict_hap_map = {}
+    file_in = open(fn_vcf, 'r')
+    for line in file_in:
+        if line.startswith("#"):
+            continue
+        else:
+            spl = line.split()
+            site = int(spl[1]) - 1 # transform the 1-base into 0-base
+            if dict_hap_map.get(site):
+                continue
+            if spl[9][0] == '0':
+                dict_hap_map[site] = 'hapA'
+            else:
+                dict_hap_map[site] = 'hapB'
+    file_in.close()
+    return dict_hap_map
+
 
 
 if __name__ == "__main__":

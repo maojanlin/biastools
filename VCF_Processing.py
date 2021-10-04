@@ -10,22 +10,22 @@ def main(fn_vcf, fn_output):
     toAdd = []
     should = True
     for line in file:
-        if should and line.startswith("##"):
+        if should and line.startswith("##"):        # "##" is the header
             should = should
             f.write(line)
         else:
             if line.startswith("#"):
                 categories = line.split()
                 for i in range(len(categories)):
-                    if categories[i] == 'NA12878':
+                    if categories[i] == 'NA12878':  # 'NA12878' is the last item but seems to be not universal
                         index = i
-                toAdd = [categories[i] for i in range(8)]
+                toAdd = [categories[i] for i in range(8)]  # leaves only 9 columns
                 toAdd.append(categories[index])
                 f.write(line)
-	    else:
+            else:
                 spl = line.split()
 
-                if len(set(spl[index].split("|")) )>1:
+                if len(set(spl[index].split("|")) )>1:  # there are differences in the 0|0 entry
                     toAdd = [spl[i] for i in range(8)]
                     toAdd.append(spl[index])
                     f.write("\t".join(toAdd))

@@ -5,14 +5,14 @@ from subprocess import call
 def main(fn_vcf, fn_fas, fn_id, fn_n, fn_c):
 
 
-    for command in ("bcftools view -i \'GT~\"1|.\"\' -o hapA.vcf " + fn_vcf,
-                    "bcftools view -i \'GT~\".|1\"\' -o hapB.vcf " + fn_vcf,
+    for command in (#"bcftools view -i \'GT~\"1|.\"\' -o hapA.vcf " + fn_vcf,
+                    #"bcftools view -i \'GT~\".|1\"\' -o hapB.vcf " + fn_vcf,
                     "mason_simulator -iv hapA.vcf -ir " + fn_fas + " -o hapA1.fq -or hapA2.fq -oa hapA.sam -n " + fn_n,
-                    "mason_simulator -iv hapB.vcf -ir " + fn_fas + " -o hapB1.fq -or hapB2.fq -oa hapB.sam  -n " + fn_n,
-                    "samtools sort hapA.sam -o sorted_hapA.sam",
-                    "python ../VCF_processing.py -v hapA.vcf -o hapA_het.vcf",
-                    "python3 ref_bi.py -v hapA_het.vcf -s sorted_hapA.sam -f chr21_fasta.fa -o hapA_ref_bi.txt"
-                    "ipython create_ref_bi_graph.py"):
+                    #"mason_simulator -iv hapB.vcf -ir " + fn_fas + " -o hapB1.fq -or hapB2.fq -oa hapB.sam  -n " + fn_n,
+                    #"samtools sort hapA.sam -o sorted_hapA.sam",
+                    #"python VCF_Processing.py -v hapA.vcf -o hapA_het.vcf",
+                    "python3 ref_bi.py -v hapA_het.vcf -s sorted_hapA.sam -f " + fn_fas + " -o hapA_ref_bi.txt"):#,
+                    #"ipython create_ref_bi_graph.py"):
         toDisplay = "I am about to run " + command
         #print(toDisplay, file = sys.stdout)
         call(command, shell=True)
