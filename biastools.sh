@@ -3,6 +3,8 @@ bgzip -c renamed_chr21_NA12878.vcf > renamed_chr21_NA12878.vcf.gz
 bcftools index renamed_chr21_NA12878.vcf.gz
 bcftools consensus -f GRCh38_chr21.fa -o GRCh38_chr21.hapA.fa -H 1 renamed_chr21_NA12878.vcf.gz
 bcftools consensus -f GRCh38_chr21.fa -o GRCh38_chr21.hapB.fa -H 2 renamed_chr21_NA12878.vcf.gz
+samtools faidx GRCh38_chr21.hapA.fa
+samtools faidx GRCh38_chr21.hapB.fa
 
 mason_simulator -ir GRCh38_chr21.hapA.fa -o hapA_1.fq -or hapA_2.fq -oa hapA.sam -n 3600000
 mason_simulator -ir GRCh38_chr21.hapB.fa -o hapB_1.fq -or hapB_2.fq -oa hapB.sam -n 3600000

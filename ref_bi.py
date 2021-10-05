@@ -259,27 +259,17 @@ def main(fn_vcf, fn_sam, fn_fasta, fn_output):
             if ref_count + alt_count == 0:
                 f.write("N/A")
             else:
-                f.write(str(ref_count / float(ref_count + alt_count))) 
+                f.write(format(ref_count / float(ref_count + alt_count), '.5f')) 
             f.write(f'\t{ref_count}\t{alt_count}\t{gap_count}\t{other_count}\t{reads_at_het}\t{sum_mapq}\t')#modified this \t vs \n
+            #f.write("\t" + str(ref_count) + "\t" + str(alt_count) + "\t" + str(gap_count) + "\t" + (other_count) + "\t" + str(reads_at_het) + "\t" + str(sum_mapq) + "\t")
             if count_a + count_b == 0:#added this up to 
                 f.write("N/A")
             else:
                 if reference_hap =='hapA':
-                    f.write(str((count_a)/(count_a+count_b)))
+                    f.write(format((count_a)/(count_a+count_b), '.5f'))
                 else:
-                    f.write(str((count_b)/(count_a+count_b)))
+                    f.write(format((count_b)/(count_a+count_b), '.5f'))
             f.write("\n")#up to here
-            # f.write("\t")
-            # f.write(str(ref_count))
-            # f.write("\t")
-            # f.write(str(alt_count))
-            # f.write("\t")
-            # f.write(str(gap_count))
-            # f.write("\t")
-            # f.write(str(other_count))
-            # f.write("\t")
-            # f.write(str(reads_at_het))
-            # f.write("\n")
             count_pos += 1
 
     f.close()
@@ -337,8 +327,8 @@ if __name__ == "__main__":
     fn_sam = args.sam
     fn_fasta = args.fasta
     fn_output = args.out
-    print('vcf', fn_vcf)
-    print('sam', fn_sam)
-    print('fasta', fn_fasta)
-    print('output', fn_output)
+    print('Input vcf:', fn_vcf)
+    print('Input sam:', fn_sam)
+    print('Input fasta:', fn_fasta)
+    print('Output file:', fn_output)
     main(fn_vcf, fn_sam, fn_fasta, fn_output)
