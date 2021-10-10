@@ -4,7 +4,8 @@ import argparse
 def main(fn_vcf, fn_output):
     #t = time.time()
     file = open(fn_vcf, 'r')
-    f = open(fn_output, 'a+')
+    #f = open(fn_output, 'a+')
+    f = open(fn_output, 'w')
 
     index = -1
     toAdd = []
@@ -19,14 +20,14 @@ def main(fn_vcf, fn_output):
                 for i in range(len(categories)):
                     if categories[i] == 'NA12878':  # 'NA12878' is the last item but seems to be not universal
                         index = i
-                toAdd = [categories[i] for i in range(8)]  # leaves only 9 columns
+                toAdd = [categories[i] for i in range(9)]  # leaves only 9 columns
                 toAdd.append(categories[index])
                 f.write(line)
             else:
                 spl = line.split()
 
                 if len(set(spl[index].split("|")) )>1:  # there are differences in the 0|0 entry
-                    toAdd = [spl[i] for i in range(8)]
+                    toAdd = [spl[i] for i in range(9)]
                     toAdd.append(spl[index])
                     f.write("\t".join(toAdd))
                     f.write("\n")
