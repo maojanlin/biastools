@@ -5,149 +5,120 @@ import os.path
 from os import path
 import pysam
 
-def main(fn_vcf, fn_sam, fn_fasta, fn_output):
-    # read reference file
-    ref_file = open(fn_fasta, 'r')  #TODO need to fix this
-    reference = ''
-    for line in ref_file:
-        if not line.startswith('>'):
-            reference += line.strip()
-    ref_file.close()
-    
 
-
-
-    vcf_file_name = fn_output+'.chr_vcf.pickle'
-    sam_file_name = fn_output+'.chr_sam.pickle'
-    
-    ######## LOAD THE VCF FILE ########
-    # read the fn_vcf file, build the pickle file it is not exist
+def parse_vcf_to_dict(fn_vcf):
+    """ load the vcf file to a dict{list_info} according to chromosome name """
+    print("Start parsing the vcf file", fn_vcf)
     in_vcf_file = pysam.VariantFile(fn_vcf, 'r')
     count_het = 0
-    if not path.exists(vcf_file_name):
-        chr_vcf = {}
-        for segment in in_vcf_file:
-            ref_name = segment.contig
-            pos      = segment.pos - 1
-            ref      = segment.ref
-            list_alt = segment.alts
-            if len(ref) > 1 or len(list_alt[0]) > 1:  # TODO skip all the multiple bases variant site
-                continue
-            
-            if ref_name not in chr_vcf.keys():
-                chr_vcf[ref_name] = [[pos], [[ref, ''.join(list_alt)]]]
-            else:
-                chr_vcf[ref_name][0].append(pos)
-                chr_vcf[ref_name][1].append([ref, ''.join(list_alt)])
+    chr_vcf = {}
+    for segment in in_vcf_file:
+        ref_name = segment.contig
+        pos      = segment.pos - 1
+        ref      = segment.ref
+        list_alt = segment.alts
+        hap_info = str(segment).split()[9] # "0|0", "1|0", "0|1" tag
+        if len(ref) > 1 or len(list_alt[0]) > 1:  # TODO skip all the multiple bases variant site
+            continue
         
-        #pickle.dump(chr_vcf, open(vcf_file_name, 'wb'))
-        print ('Dump to {}'.format(vcf_file_name))
-    else:
-        #print ('Load from {}'.format(vcf_file_name))
-        chr_vcf = pickle.load(open(vcf_file_name, "rb"))
+        if ref_name not in chr_vcf.keys():
+            chr_vcf[ref_name] = [[pos, ref, list_alt, hap_info]]
+        else:
+            chr_vcf[ref_name].append([pos, ref, list_alt, hap_info])
     in_vcf_file.close()
+    return chr_vcf
     
 
-
-    ######## LOAD THE SAM/BAM FILE ########
+def parse_sam_to_dict(fn_sam):
+    """ load the sam file to a dict{list_info} according to chromosome name """
+    print("Start parsing the sam file", fn_sam)
     in_sam_file = pysam.AlignmentFile(fn_sam, "r")
     chr_sam = {}
-    if not path.exists(sam_file_name):
-        for segment in in_sam_file:
-            flag = segment.flag
-            if (flag & 4): # bitwise AND 4, segment unmapped
-                continue
-            ref_name = segment.reference_name
-            #: ignores haplotype suffixes
-            if ref_name.endswith('A') or ref_name.endswith('B'):
-                ref_name = ref_name[:-1]
-            cigar = segment.cigarstring #### maybe cigartuple would be enough
-            parsed_cigar = segment.cigartuples
-            mapq  = segment.mapping_quality
-            start_pos = segment.reference_start # start position in genome coordiante
-            sequence  = segment.query_alignment_sequence
-            rg_tag    = segment.get_tag("RG")
-            mod_sequence = ""
-            # warp the read sequence according to CIGAR
-            mod_id = 0
-            start = start_pos
-            num_del = sum([p[1] for p in parsed_cigar if p[0] == 2]) # collect the Ds
-            num_ins = sum([p[1] for p in parsed_cigar if (p[0] == 1 or p[0]==4 or p[0] == 5)])
-            for pair_info in parsed_cigar:
-                code = pair_info[0]
-                runs = pair_info[1]
-                if code == 0: # M
-                    mod_sequence += sequence[mod_id:mod_id + runs]
-                    mod_id += runs
-                elif code == 1: # I
-                    mod_id += runs
-                elif code == 2: # D
-                    mod_sequence += '-'*runs
-                elif code == 4: # S
-                    mod_id += runs
-                elif code == 5: # H
-                    mod_id += runs
-                else:
-                    print ("ERROR: unexpected cigar code", segment.cigarstring)
-            try:
-                assert len(mod_sequence) == (segment.reference_end - start_pos)
-            except:
-                print("WARNING! Warping fail at:", segment.query_name)
-
+    for segment in in_sam_file:
+        flag = segment.flag
+        if (flag & 4): # bitwise AND 4, segment unmapped
+            continue
+        ref_name = segment.reference_name
+        if ref_name.endswith('A') or ref_name.endswith('B'): # ignores haplotype suffixes
+            ref_name = ref_name[:-1]
             
-            if ref_name not in chr_sam.keys():
-                chr_sam[ref_name] = [[], [], [], [], [], []]
-            chr_sam[ref_name][0].append(start_pos) #position
-            chr_sam[ref_name][1].append(mod_sequence) #sequence
-            chr_sam[ref_name][2].append(mapq)
-            chr_sam[ref_name][3].append(rg_tag)
-        #pickle.dump(chr_sam, open(sam_file_name, 'wb'))
-        print ('Dump to {}'.format(sam_file_name))
-    else:
-        #print ('Load from {}'.format(sam_file_name))
-        chr_sam = pickle.load(open(sam_file_name, 'rb'))
+        parsed_cigar = segment.cigartuples
+        start_pos = segment.reference_start # start position in genome coordiante
+        mapq  = segment.mapping_quality
+        rg_tag    = segment.get_tag("RG")
+        
+        sequence  = segment.query_alignment_sequence
+        mod_sequence = ""
+        # warp the read sequence according to CIGAR
+        mod_id = 0
+        start = start_pos
+        for pair_info in parsed_cigar:
+            code, runs = pair_info
+            if code == 0: # M
+                mod_sequence += sequence[mod_id:mod_id + runs]
+                mod_id += runs
+            elif code == 1: # I
+                mod_id += runs
+            elif code == 2: # D
+                mod_sequence += '-'*runs
+            elif code == 4: # S
+                mod_id += runs
+            elif code == 5: # H
+                mod_id += runs
+            else:
+                print ("ERROR: unexpected cigar code", segment.cigarstring)
+        try:
+            assert len(mod_sequence) == (segment.reference_end - start_pos)
+        except:
+            print("WARNING! Warping fail at:", segment.query_name)
+        
+        if ref_name not in chr_sam.keys():
+            chr_sam[ref_name] = [[], [], [], []]
+        chr_sam[ref_name][0].append(start_pos) #position
+        chr_sam[ref_name][1].append(mod_sequence) #sequence
+        chr_sam[ref_name][2].append(mapq)
+        chr_sam[ref_name][3].append(rg_tag)
     in_sam_file.close()
+    return chr_sam
 
 
-    ######## OUTPUT THE BIAS REPORT ########
+
+def main(fn_vcf, fn_sam, fn_fasta, fn_output):
+    chr_vcf = parse_vcf_to_dict(fn_vcf)
+    chr_sam = parse_sam_to_dict(fn_sam)
+
+    # COMPARE VCF AND SAM FILE
     f = open(fn_output, 'w')
     f.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tGAP_COUNT\tOTHER_COUNT\tNUM_READS\tSUM_MAPQ\tREAD_DISTRIBUTION\n")
     
-    chr_list = sorted(chr_vcf.keys())
-    for ref_name in chr_list:
-        list_het_site = chr_vcf[ref_name][0]
-        list_het_info = chr_vcf[ref_name][1]
-        
+    for ref_name, list_het_info in sorted(chr_vcf.items()):
         list_sam_pos   = chr_sam[ref_name][0]
         list_sam_reads = chr_sam[ref_name][1]
         list_mapq      = chr_sam[ref_name][2]
         list_rg_tag    = chr_sam[ref_name][3]
         
         start_flag = False
-        start_low_bd = 0
-        count_pos = 0
+        start_low_bd = 0  # last variant site's starting point
 
         total_ref_count = 0
         total_alt_count = 0
         total_gap_count = 0
         total_other_count = 0
-        hap_map = ref_hap_map(fn_vcf)
+        for het_info in list_het_info:
+            target_pos, ref_base, list_alt, hap_info = het_info
 
-        for target_pos in list_het_site:
             ref_count = 0
             alt_count = 0
             gap_count = 0
             other_count = 0
-            reads_at_het = 0
+            count_reads = 0
             sum_mapq = 0
-            # reference_hap = find_ref_hap(pos, fn_vcf)#added this
-            reference_hap = hap_map[target_pos] # replace reading every time to a map
-            count_a = 0.0#added this
-            count_b = 0.0#added this
+            
+            count_a = 0.0
+            count_b = 0.0
             read_dis = 0.0
             if target_pos == 'N/A':
                 f.write('\n')
-                count_pos += 1
                 continue
 
             for idx in range(start_low_bd, len(list_sam_pos)):
@@ -158,18 +129,18 @@ def main(fn_vcf, fn_sam, fn_fasta, fn_output):
                     if not start_flag:
                         start_flag = True
                         start_low_bd = idx
-                    reads_at_het += 1
                     sum_mapq += list_mapq[idx]
+                    count_reads += 1
                     if 'hapA' in list_rg_tag[idx]:
                         count_a += 1.0
                     elif 'hapB' in list_rg_tag[idx]:
                         count_b += 1.0
                     try:  # scan the read base crossing the target position
                         allele = list_sam_reads[idx][target_pos - align_st_pos]
-                        if allele in list_het_info[count_pos][0]:
+                        if allele == ref_base:
                             ref_count += 1
                             total_ref_count += 1
-                        elif allele in list_het_info[count_pos][1]:
+                        elif allele in list_alt:
                             alt_count += 1
                             total_alt_count += 1
                         elif allele == '-':
@@ -181,9 +152,8 @@ def main(fn_vcf, fn_sam, fn_fasta, fn_output):
                     except:
                         print("in here. pos is: ", pos, "   and align_st_pos is: ", align_st_pos)
                         print("sam[align_st_pos]: ", list_sam_reads[idx])
-                else:
-                    if align_st_pos > target_pos:
-                        break
+                elif align_st_pos > target_pos: # the aligned sequence exceed the variant site
+                    break
             start_flag = False
 
             # write report for each target_position
@@ -192,16 +162,15 @@ def main(fn_vcf, fn_sam, fn_fasta, fn_output):
                 f.write("N/A")
             else:
                 f.write(format(ref_count / float(ref_count + alt_count), '.8f')) 
-            f.write("\t" + str(ref_count) + "\t" + str(alt_count) + "\t" + str(gap_count) + "\t" + str(other_count) + "\t" + str(reads_at_het) + "\t" + str(sum_mapq) + "\t")
+            f.write("\t" + str(ref_count) + "\t" + str(alt_count) + "\t" + str(gap_count) + "\t" + str(other_count) + "\t" + str(count_reads) + "\t" + str(sum_mapq) + "\t")
             if count_a + count_b == 0: # read distribution section
                 f.write("N/A")
             else:
-                if reference_hap =='hapA':
+                if hap_info[0] =='0': # hapA
                     f.write(format((count_a)/(count_a+count_b), '.8f'))
-                else:
+                else: # hapB
                     f.write(format((count_b)/(count_a+count_b), '.8f'))
             f.write("\n")
-            count_pos += 1
         
         # report the total count
         print()
@@ -213,29 +182,6 @@ def main(fn_vcf, fn_sam, fn_fasta, fn_output):
     f.close()
 
 
-
-def ref_hap_map(fn_vcf):
-    """
-    dict_hap_map{}
-    - key: het_site
-    - value: hapA or hapB
-    """
-    dict_hap_map = {}
-    file_in = open(fn_vcf, 'r')
-    for line in file_in:
-        if line.startswith("#"):
-            continue
-        else:
-            spl = line.split()
-            site = int(spl[1]) - 1 # transform the 1-base into 0-base
-            if dict_hap_map.get(site):
-                continue
-            if spl[9][0] == '0':
-                dict_hap_map[site] = 'hapA'
-            else:
-                dict_hap_map[site] = 'hapB'
-    file_in.close()
-    return dict_hap_map
 
 
 
