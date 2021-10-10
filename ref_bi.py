@@ -3,181 +3,128 @@ import re
 import pickle
 import os.path
 from os import path
-
+import pysam
 
 def main(fn_vcf, fn_sam, fn_fasta, fn_output):
-    ref_file = open(fn_fasta, 'r')
+    # read reference file
+    ref_file = open(fn_fasta, 'r')  #TODO need to fix this
     reference = ''
     for line in ref_file:
         if not line.startswith('>'):
             reference += line.strip()
+    ref_file.close()
+    
 
-    file = open(fn_vcf, 'r')
-    count_line = 0
-    index_ref = 0
-    index_pos = 0
-    index_alt = 0
-    index_cat = 0
+
 
     vcf_file_name = fn_output+'.chr_vcf.pickle'
     sam_file_name = fn_output+'.chr_sam.pickle'
-
-    f = open(fn_output, 'w')
     
+    ######## LOAD THE VCF FILE ########
     # read the fn_vcf file, build the pickle file it is not exist
+    in_vcf_file = pysam.VariantFile(fn_vcf, 'r')
     count_het = 0
     if not path.exists(vcf_file_name):
         chr_vcf = {}
-        for line in file:
-            #if not line.startswith("##") and line.startswith("#"): # the "#" category line
-            if line.startswith("#"): # the "#" category line
-                if line.startswith("##"):
-                    pass
-                else:
-                    categories = line.split()
-                    index_cat = count_line
-                    for i in range(len(categories)):
-                        if categories[i] == 'REF':
-                            index_ref = i
-                        elif categories[i] == 'ALT':
-                            index_alt = i
-                        elif categories[i] == 'POS':
-                            index_pos = i
-            elif count_line > index_cat and index_cat != 0:
-                now = line.split()
-                #print("line: ", line)
-                if line == '\n':
-                    if not chr_vcf:
-                        chr_vcf[chr] = [[],[]]#this works since we are doing individual chromosomes
-                    else:
-                        chr_vcf[chr][0].append('N/A')
-                        chr_vcf[chr][1].append(['N/A', 'N/A'])
-                    continue
-                # chr = int(now[0])
-                chr = now[0]
-                if not chr_vcf:
-                    chr_vcf[chr] = [[], []]
-                elif chr not in chr_vcf.keys():
-                    chr_vcf[chr] = [[], []]
-
-                #print(line)
-                if (len(now[index_alt]) == 1 and len(now[index_ref]) == 1):
-                    chr_vcf[chr][0].append(int(now[index_pos]) - 1)
-                    chr_vcf[chr][1].append([now[index_ref], now[index_alt]])
-                elif ',' in now[index_alt]:
-                    possib = now[index_alt].split(',')
-                    chr_vcf[chr][0].append(int(now[index_pos]) - 1)
-                    chr_vcf[chr][1].append([now[index_ref], ''.join(possib)])
-            count_line += 1
+        for segment in in_vcf_file:
+            ref_name = segment.contig
+            pos      = segment.pos - 1
+            ref      = segment.ref
+            list_alt = segment.alts
+            if len(ref) > 1 or len(list_alt[0]) > 1:  # TODO skip all the multiple bases variant site
+                continue
+            
+            if ref_name not in chr_vcf.keys():
+                chr_vcf[ref_name] = [[pos], [[ref, ''.join(list_alt)]]]
+            else:
+                chr_vcf[ref_name][0].append(pos)
+                chr_vcf[ref_name][1].append([ref, ''.join(list_alt)])
+        
         #pickle.dump(chr_vcf, open(vcf_file_name, 'wb'))
         print ('Dump to {}'.format(vcf_file_name))
     else:
         #print ('Load from {}'.format(vcf_file_name))
         chr_vcf = pickle.load(open(vcf_file_name, "rb"))
+    in_vcf_file.close()
+    
 
-    file = open(fn_sam, 'r')
-    f.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tGAP_COUNT\tOTHER_COUNT\tNUM_READS\tSUM_MAPQ\tREAD_DISTRIBUTION")#modified
-    f.write("\n")
-    count_line = 0
+
+    ######## LOAD THE SAM/BAM FILE ########
+    in_sam_file = pysam.AlignmentFile(fn_sam, "r")
     chr_sam = {}
-
     if not path.exists(sam_file_name):
-        for line in file:
-            if not line.startswith('@'):
-                spl = line.split() 
-                tag = int(spl[1])
-                if (tag & 4):
-                    continue
-                chr = spl[2]
-                #: ignores haplotype suffixes
-                if chr.endswith('A') or chr.endswith('B'):
-                    chr = chr[:-1]
-                # chr = spl[2][0:2]
-                # chr = int(spl[2][0:2])
-                cigar = spl[5]
-                mapq = int(spl[4])
-                start_pos = int(spl[3]) - 1 #TODO
-                sequence = spl[9]
-                rg_tag = spl[-1]# added this okay
-                #print("rg tag is ")
-                #print(rg_tag)
-                #print("\n")
-                mod_sequence = ''
-                #: ignores unmapped reads
-                #: tag 4: unaligned
-                if tag & 4:
-                    continue
-                if not cigar == (str(len(sequence))+'M') and not (tag & 4):
-                    change = 0
-                    start = start_pos
-                    count_del = 0
-                    count_ins = 0
-                    for num1, idm in re.findall('(\d+)([IDMS])', cigar):
-                        # print(start_pos)
-                        if idm == 'M':
-                            mod_sequence += sequence[change:change + int(num1)]
-                        elif idm == 'D':
-                            count_del += int(num1)
-                            for i in range(int(num1)):
-                                mod_sequence += '-'
-                        elif idm == 'I':
-                            count_ins += int(num1)
-                        elif idm == 'S':
-                            count_ins += int(num1)
-                        else:
-                            print ('error: unexpected cigar letter', cigar)
-                            exit ()
-
-                        if idm != 'D':
-                            change += int(num1)
-                    #print("tag: {0}, cigar: {1}".format(tag, cigar))
-                    ref = reference[start_pos:start_pos + len(sequence) + count_del - count_ins]
-                    try:
-                        assert len(ref) == len(mod_sequence)
-                    except:
-                        if len(ref) == 0:
-                            continue
-                        else:
-                            print("read name: ", spl[0])
-                            print ("ref      seq", len(ref))
-                            print ("modified seq", mod_sequence)
-                            print ("start_pos", start_pos)
-                            print ("count_ins", count_ins)
-                            print ("count_del", count_del)
-                            print ("cigar", cigar)
-                            print ("flag", tag) 
-                            exit()
+        for segment in in_sam_file:
+            flag = segment.flag
+            if (flag & 4): # bitwise AND 4, segment unmapped
+                continue
+            ref_name = segment.reference_name
+            #: ignores haplotype suffixes
+            if ref_name.endswith('A') or ref_name.endswith('B'):
+                ref_name = ref_name[:-1]
+            cigar = segment.cigarstring #### maybe cigartuple would be enough
+            parsed_cigar = segment.cigartuples
+            mapq  = segment.mapping_quality
+            start_pos = segment.reference_start # start position in genome coordiante
+            sequence  = segment.query_alignment_sequence
+            rg_tag    = segment.get_tag("RG")
+            mod_sequence = ""
+            # warp the read sequence according to CIGAR
+            mod_id = 0
+            start = start_pos
+            num_del = sum([p[1] for p in parsed_cigar if p[0] == 2]) # collect the Ds
+            num_ins = sum([p[1] for p in parsed_cigar if (p[0] == 1 or p[0]==4 or p[0] == 5)])
+            for pair_info in parsed_cigar:
+                code = pair_info[0]
+                runs = pair_info[1]
+                if code == 0: # M
+                    mod_sequence += sequence[mod_id:mod_id + runs]
+                    mod_id += runs
+                elif code == 1: # I
+                    mod_id += runs
+                elif code == 2: # D
+                    mod_sequence += '-'*runs
+                elif code == 4: # S
+                    mod_id += runs
+                elif code == 5: # H
+                    mod_id += runs
                 else:
-                    mod_sequence = sequence
-                if not chr_sam:
-                    chr_sam[chr] = [[], [], [], [], [], []]
-                elif chr not in chr_sam.keys():
-                    chr_sam[chr] = [[], [], [], [], [], []]
-                chr_sam[chr][0].append(start_pos) #position
-                chr_sam[chr][1].append(mod_sequence) #sequence
-                chr_sam[chr][2].append(tag)
-                chr_sam[chr][3].append(cigar)
-                chr_sam[chr][4].append(mapq)
-                chr_sam[chr][5].append(rg_tag)#added this 
-            count_line += 1
+                    print ("ERROR: unexpected cigar code", segment.cigarstring)
+            try:
+                assert len(mod_sequence) == (segment.reference_end - start_pos)
+            except:
+                print("WARNING! Warping fail at:", segment.query_name)
+
+            
+            if ref_name not in chr_sam.keys():
+                chr_sam[ref_name] = [[], [], [], [], [], []]
+            chr_sam[ref_name][0].append(start_pos) #position
+            chr_sam[ref_name][1].append(mod_sequence) #sequence
+            chr_sam[ref_name][2].append(mapq)
+            chr_sam[ref_name][3].append(rg_tag)
         #pickle.dump(chr_sam, open(sam_file_name, 'wb'))
         print ('Dump to {}'.format(sam_file_name))
     else:
         #print ('Load from {}'.format(sam_file_name))
         chr_sam = pickle.load(open(sam_file_name, 'rb'))
+    in_sam_file.close()
 
-    chr_list = list(chr_vcf.keys())
-    chr_list.sort()
-    #count = 0
-    for chr in chr_list:
-        het_site_list = chr_vcf[chr][0]
-        options = chr_vcf[chr][1]
-        sam_pos = chr_sam[chr][0]
-        sam_reads = chr_sam[chr][1]
-        list_mapq = chr_sam[chr][4]
-        rg_tag = chr_sam[chr][5]#added this
-        have_started = False
-        starting_point = 0
+
+    ######## OUTPUT THE BIAS REPORT ########
+    f = open(fn_output, 'w')
+    f.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tGAP_COUNT\tOTHER_COUNT\tNUM_READS\tSUM_MAPQ\tREAD_DISTRIBUTION\n")
+    
+    chr_list = sorted(chr_vcf.keys())
+    for ref_name in chr_list:
+        list_het_site = chr_vcf[ref_name][0]
+        list_het_info = chr_vcf[ref_name][1]
+        
+        list_sam_pos   = chr_sam[ref_name][0]
+        list_sam_reads = chr_sam[ref_name][1]
+        list_mapq      = chr_sam[ref_name][2]
+        list_rg_tag    = chr_sam[ref_name][3]
+        
+        start_flag = False
+        start_low_bd = 0
         count_pos = 0
 
         total_ref_count = 0
@@ -186,10 +133,7 @@ def main(fn_vcf, fn_sam, fn_fasta, fn_output):
         total_other_count = 0
         hap_map = ref_hap_map(fn_vcf)
 
-        for pos in het_site_list:
-            #count+=1
-            #if count > 5:
-            #    break
+        for target_pos in list_het_site:
             ref_count = 0
             alt_count = 0
             gap_count = 0
@@ -197,45 +141,35 @@ def main(fn_vcf, fn_sam, fn_fasta, fn_output):
             reads_at_het = 0
             sum_mapq = 0
             # reference_hap = find_ref_hap(pos, fn_vcf)#added this
-            reference_hap = hap_map[pos] # replace reading every time to a map
+            reference_hap = hap_map[target_pos] # replace reading every time to a map
             count_a = 0.0#added this
             count_b = 0.0#added this
             read_dis = 0.0
-            if pos == 'N/A':
+            if target_pos == 'N/A':
                 f.write('\n')
                 count_pos += 1
                 continue
-            for i in range(starting_point, len(sam_pos)):
-                align = sam_pos[i]
-                ran = range(align, align + len(sam_reads[i]))
-                
-                #print(rg_tag[i])
-#                if 'hapA' in rg_tag[i]:#added this                                                                                                       
-#                    count_a += 1.0
-#                elif 'hapB' in rg_tag[i]:       
-#                    count_b += 1.0#up to here
 
-                if pos in ran:
-                    #print("in here. pos is: ", pos, "   and align is: ", align)
-                    #print("sam[align]: ", sam_reads[i])
-                    #print("rg tag is: ", rg_tag[i])
-                    #print("here, it overlaps")
-                    if not have_started:
-                        have_started = True
-                        starting_point = i
+            for idx in range(start_low_bd, len(list_sam_pos)):
+                align_st_pos = list_sam_pos[idx]
+                ran = range(align_st_pos, align_st_pos + len(list_sam_reads[idx]))
+
+                if target_pos in ran:
+                    if not start_flag:
+                        start_flag = True
+                        start_low_bd = idx
                     reads_at_het += 1
-                    sum_mapq += list_mapq[i]
-                    if 'hapA' in rg_tag[i]:#added this                                                                                                                                     
+                    sum_mapq += list_mapq[idx]
+                    if 'hapA' in list_rg_tag[idx]:
                         count_a += 1.0
-                    elif 'hapB' in rg_tag[i]:
-                        count_b += 1.0#up to here 
-                    try:
-                        allele = sam_reads[i][pos - align]
-                        #print("allele: ", allele)
-                        if allele in options[count_pos][0]:
+                    elif 'hapB' in list_rg_tag[idx]:
+                        count_b += 1.0
+                    try:  # scan the read base crossing the target position
+                        allele = list_sam_reads[idx][target_pos - align_st_pos]
+                        if allele in list_het_info[count_pos][0]:
                             ref_count += 1
                             total_ref_count += 1
-                        elif allele in options[count_pos][1]:
+                        elif allele in list_het_info[count_pos][1]:
                             alt_count += 1
                             total_alt_count += 1
                         elif allele == '-':
@@ -245,50 +179,39 @@ def main(fn_vcf, fn_sam, fn_fasta, fn_output):
                             other_count += 1
                             total_other_count += 1
                     except:
-                        print("in here. pos is: ", pos, "   and align is: ", align)
-                        print("sam[align]: ", sam_reads[i])
+                        print("in here. pos is: ", pos, "   and align_st_pos is: ", align_st_pos)
+                        print("sam[align_st_pos]: ", list_sam_reads[idx])
                 else:
-                    if align > pos:
+                    if align_st_pos > target_pos:
                         break
-            have_started = False
-            f.write(str(chr))
-            f.write("\t")
-            f.write(str(pos + 1)) #: outputs in 1-based format
-            # f.write(str(pos))
-            f.write("\t")
+            start_flag = False
+
+            # write report for each target_position
+            f.write(ref_name + "\t" + str(target_pos+1) + "\t") # report is in 1-based genome format the same as vcf
             if ref_count + alt_count == 0:
                 f.write("N/A")
             else:
-                f.write(format(ref_count / float(ref_count + alt_count), '.5f')) 
-            f.write(f'\t{ref_count}\t{alt_count}\t{gap_count}\t{other_count}\t{reads_at_het}\t{sum_mapq}\t')#modified this \t vs \n
-            #f.write("\t" + str(ref_count) + "\t" + str(alt_count) + "\t" + str(gap_count) + "\t" + (other_count) + "\t" + str(reads_at_het) + "\t" + str(sum_mapq) + "\t")
-            if count_a + count_b == 0:#added this up to 
+                f.write(format(ref_count / float(ref_count + alt_count), '.8f')) 
+            f.write("\t" + str(ref_count) + "\t" + str(alt_count) + "\t" + str(gap_count) + "\t" + str(other_count) + "\t" + str(reads_at_het) + "\t" + str(sum_mapq) + "\t")
+            if count_a + count_b == 0: # read distribution section
                 f.write("N/A")
             else:
                 if reference_hap =='hapA':
-                    f.write(format((count_a)/(count_a+count_b), '.5f'))
+                    f.write(format((count_a)/(count_a+count_b), '.8f'))
                 else:
-                    f.write(format((count_b)/(count_a+count_b), '.5f'))
-            f.write("\n")#up to here
+                    f.write(format((count_b)/(count_a+count_b), '.8f'))
+            f.write("\n")
             count_pos += 1
-
+        
+        # report the total count
+        print()
+        print(ref_name)
+        print("total ref base:", total_ref_count)
+        print("total alt base:", total_alt_count)
+        print("total gap:", total_gap_count)
+        print("total other base:", total_other_count)
     f.close()
 
-
-def find_ref_hap(het_site, fn_vcf):
-    file_in = open(fn_vcf, 'r')
-    for line in file_in:
-        if line.startswith("#"):
-            continue
-        else:
-            spl = line.split()
-            if int(spl[1]) == het_site+1:#+1 because 0-base to 1-base                                                                                                            
-                hap = spl[9].split("|")
-                if hap[0] == '0':
-                    return 'hapA'
-                else:
-                    return 'hapB'
-    print("error, het site not found")
 
 
 def ref_hap_map(fn_vcf):
