@@ -1,6 +1,6 @@
 #bgzip -c renamed_chr21_NA12878.vcf > renamed_chr21_NA12878.vcf.gz
-#
 #bcftools index renamed_chr21_NA12878.vcf.gz
+#
 #bcftools consensus -f GRCh38_chr21.fa -o GRCh38_chr21.hapA.fa -H 1 renamed_chr21_NA12878.vcf.gz
 #bcftools consensus -f GRCh38_chr21.fa -o GRCh38_chr21.hapB.fa -H 2 renamed_chr21_NA12878.vcf.gz
 #samtools faidx GRCh38_chr21.hapA.fa
@@ -18,7 +18,13 @@
 #
 #samtools merge -f -r bt2.sorted.bam hapA.bt2.sorted.bam hapB.bt2.sorted.bam
 #
-#python3 VCF_Processing.py -v renamed_chr21_NA12878.vcf -o chr21_het.vcf
-#bedtools intersect -a bt2.sorted.bam -b chr21_het.vcf | samtools view -h > bt2.sorted.het.sam
+echo "[BIASTOOLS] Filter the heterozygous site in vcf file"
+python3 filter_het_VCF.py -v renamed_chr21_NA12878.vcf.gz -o chr21_het.vcf.gz
+tabix -p vcf chr21_het.vcf.gz
 
-python3 ref_bi.py -s bt2.sorted.het.sam -v chr21_het.vcf -f GRCh38_chr21.fa -o bt.bias
+echo "[BIASTOOLS] Intersect the bam file and vcf file"
+bedtools intersect -a bt2.sorted.bam -b chr21_het.vcf.gz | samtools view -bo bt2.sorted.het.bam
+samtools index bt2.sorted.het.bam
+
+echo "[BIASTOOLS] Reference bias analysis"
+python3 ref_bi.py -s bt2.sorted.het.bam -v chr21_het.vcf.gz -f GRCh38_chr21.fa -o bt.bias
