@@ -83,7 +83,7 @@ def parse_sam_to_dict(fn_sam):
 
 
 
-def main(fn_vcf, fn_sam, fn_fasta, fn_output):
+def compare_vcf_sam(fn_vcf, fn_sam, fn_output):
     chr_vcf = parse_vcf_to_dict(fn_vcf)
     chr_sam = parse_sam_to_dict(fn_sam)
 
@@ -183,8 +183,6 @@ def main(fn_vcf, fn_sam, fn_fasta, fn_output):
 
 
 
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-v', '--vcf', help='vcf file')
@@ -192,12 +190,10 @@ if __name__ == "__main__":
     parser.add_argument('-f', '--fasta', help='reference fasta file')
     parser.add_argument('-o', '--out', help='output file')
     args = parser.parse_args()
+    
     fn_vcf = args.vcf
     fn_sam = args.sam
-    fn_fasta = args.fasta
+    fn_fasta = args.fasta #TODO not used
     fn_output = args.out
-    print('Input vcf:', fn_vcf)
-    print('Input sam:', fn_sam)
-    print('Input fasta:', fn_fasta)
-    print('Output file:', fn_output)
-    main(fn_vcf, fn_sam, fn_fasta, fn_output)
+    
+    compare_vcf_sam(fn_vcf, fn_sam, fn_output)
