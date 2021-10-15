@@ -44,7 +44,7 @@ def parse_sam_to_dict(fn_sam):
             
         parsed_cigar = segment.cigartuples
         start_pos = segment.reference_start # start position in genome coordiante
-        mapq  = segment.mapping_quality
+        mapq      = segment.mapping_quality
         rg_tag    = segment.get_tag("RG")
         
         sequence  = segment.query_alignment_sequence
@@ -61,10 +61,8 @@ def parse_sam_to_dict(fn_sam):
                 mod_id += runs
             elif code == 2: # D
                 mod_sequence += '-'*runs
-            elif code == 4: # S
-                mod_id += runs
-            elif code == 5: # H
-                mod_id += runs
+            elif code == 4 or code == 5: # S or H, pysam already parsed
+                pass
             else:
                 print ("ERROR: unexpected cigar code", segment.cigarstring)
         try:
