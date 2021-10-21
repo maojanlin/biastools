@@ -19,7 +19,7 @@ def parse_vcf_to_dict(fn_vcf):
         ref      = segment.ref
         list_alt = segment.alts
         hap_info = str(segment).split()[9] # "0|0", "1|0", "0|1" tag
-        if len(ref) > 1 or len(list_alt[0]) > 1:  # separate SNP and gap sites
+        if len(ref) > 1 or len(list_alt[-1]) > 1:  # separate SNP and gap sites
             if ref_name not in chr_gap_vcf.keys():
                 chr_gap_vcf[ref_name] = [[pos, ref, list_alt, hap_info]]
             else:
@@ -55,7 +55,7 @@ def warp_by_cigar(cigar_tuples, sequence, query_name, dict_var_gap, start_pos):
     mod_id = 0
     for pair_info in cigar_tuples:
         code, runs = pair_info
-        if code ==0: # M
+        if code == 0 or code == 7 or code == 8: # M or = or X
             mod_sequence += sequence[mod_id:mod_id + runs]
             mod_id += runs
         elif code == 1: # I
