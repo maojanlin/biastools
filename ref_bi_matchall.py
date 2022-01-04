@@ -405,15 +405,15 @@ def switch_var_seq(
         ref     :str,
         start   :int,
         genotype:int
-        )-> str :
+        )-> tuple :
     """
     Switch the ref sequence according to the haplotype information
     """
     if genotype == 0:
-        return ref
+        return ref, 0
     else:
         alt = var.alts[genotype - 1]
-        return ref[:var.start-start] + alt + ref[var.stop-start:]
+        return ref[:var.start-start] + alt + ref[var.stop-start:], len(var.ref) - len(alt)
 
 
 def variant_seq(
@@ -432,10 +432,14 @@ def variant_seq(
     dict_ref_var_seqs = {}
     for ref_name in f_fasta.references:
         dict_ref_var_seqs[ref_name] = {}
-    for var in f_vcf:
+
+    set_conflict_vars = set()
+    list_f_vcf = list(f_vcf)
+    for var in list_f_vcf:
         ref_name = var.contig
         var_start = var.start - padding
         var_stop  = var.stop  + padding
+#        print(var.start)
         
         cohort_vars = list(f_vcf.fetch(var.contig, var_start, var_stop))
         if len(cohort_vars) > 1: # the case where variants are nearby
@@ -443,14 +447,32 @@ def variant_seq(
             cohort_maxstop = var_stop
             for v in cohort_vars:
                 cohort_maxstop = max(cohort_maxstop, max([v.start + len(a) for a in v.alleles]))
+#                print('\t', v.start)
 
             ref_seq = f_fasta.fetch(reference=var.contig, start= cohort_start, end = cohort_maxstop)
             seq_hap0 = ref_seq
             seq_hap1 = ref_seq
-            for c_var in reversed(cohort_vars):
+            adj_hap0 = cohort_start
+            adj_hap1 = cohort_start
+            diff_hap0 = 0
+            diff_hap1 = 0
+            prev_start0 = -1
+            prev_start1 = -1
+            for c_var in cohort_vars:
                 hap_0, hap_1 = c_var.samples[0]['GT']
-                seq_hap0 = switch_var_seq(c_var, seq_hap0, cohort_start, hap_0)
-                seq_hap1 = switch_var_seq(c_var, seq_hap1, cohort_start, hap_1)
+                if c_var.start > prev_start0 + diff_hap0:
+                    adj_hap0 += diff_hap0
+                    seq_hap0, diff_hap0 = switch_var_seq(c_var, seq_hap0, adj_hap0, hap_0)
+                    prev_start0 = c_var.start
+                else:
+                    set_conflict_vars.add(c_var.start)
+                if c_var.start > prev_start1 + diff_hap1:
+                    adj_hap1 += diff_hap1
+                    seq_hap1, diff_hap1 = switch_var_seq(c_var, seq_hap1, adj_hap1, hap_1)
+                    prev_start1 = c_var.start
+                else:
+                    set_conflict_vars.add(c_var.start)
+
             l_diff = var_start - cohort_start
             r_diff = var_stop  - cohort_maxstop
             if r_diff == 0:
@@ -462,8 +484,8 @@ def variant_seq(
         else: # single variant
             ref_seq = f_fasta.fetch(reference=var.contig, start= var_start, end = var_stop)
             hap_0, hap_1 = var.samples[0]['GT']
-            seq_hap0 = switch_var_seq(var, ref_seq, var_start, hap_0)
-            seq_hap1 = switch_var_seq(var, ref_seq, var_start, hap_1)
+            seq_hap0,_ = switch_var_seq(var, ref_seq, var_start, hap_0)
+            seq_hap1,_ = switch_var_seq(var, ref_seq, var_start, hap_1)
 
         if dict_ref_var_seqs[ref_name].get((var.start)):
             print("WARNNING! Duplicate variant at contig:", var.contig, ",pos:", var.start)
@@ -494,7 +516,9 @@ if __name__ == "__main__":
             f_fasta=f_fasta,
             padding=15)
     for key, value in dict_ref_var_seqs['chr21'].items():
-        print(key, value)
+        #print(key, value)
+        print('>' + str(key))
+        print(value[1])
     """
     dict_chr_bias = compare_vcf_sam(
             f_vcf=f_vcf, 
