@@ -416,37 +416,6 @@ def switch_var_seq(
         return ref[:var.start-start] + alt + ref[var.stop-start:], len(var.ref) - len(alt)
 
 
-def switch_cohort_var_seq(
-        #TODO
-        t_var_start :int,                   # target variant
-        prev_start  :int,                   # for checking overlap
-        prev_diff   :int,                   # for checking overlap
-        c_var       :pysam.VariantRecord,   # variants in the padding
-        ref_seq     :int,
-        begin_pos   :int,
-        hap_info    :int,
-        l_diff      :int,                   # left side boundary info
-        r_diff      :int,                   # right side boundary info
-        set_conflict_vars: set
-        )-> tuple :
-    """
-    Switching thre ref sequence according a bunch or variants, skip the conflicting variants
-    """
-    if c_var.start > prev_start + prev_diff: # or (c_var.start == prev_start and len(c_var.ref) == len(c_var.alts[hap_info])):
-        begin_pos += prev_diff
-        var_seq, diff_hap = switch_var_seq(c_var, ref_seq, begin_pos, hap_info)
-        prev_start = c_var.start
-        if c_var.start < t_var_start:
-            l_diff -= diff_hap
-        elif c_var.start != t_var_start:
-            r_diff -= diff_hap
-        return (var_seq, diff_hap, prev_start, l_diff, r_diff, set_conflict_vars)
-    else:
-        set_conflict_vars.add(c_var.start)
-        return (ref_seq, 0, prev_start, l_diff, r_diff, set_conflict_vars)
-
-
-
 def variant_seq(
         f_vcf   :pysam.VariantFile,
         f_fasta :pysam.FastaFile,
@@ -459,6 +428,8 @@ def variant_seq(
         - values: dict {}
                     - keys: var.start
                     - values: (seq_hap0, seq_hap1)
+        set containing the conflict variants
+        - note: not include the variants within the padding distance to conflict variants
     """
     dict_ref_var_seqs = {}
     for ref_name in f_fasta.references:
@@ -485,26 +456,19 @@ def variant_seq(
                 for v in cohort_vars:
                     cohort_maxstop = max(cohort_maxstop, max([v.start + len(a) + padding for a in v.alleles]))
 
-            # iterative parameters
+            # Iterative parameters
             ref_seq = f_fasta.fetch(reference=var.contig, start= cohort_start, end = cohort_maxstop)
-            seq_hap0 = ref_seq
-            seq_hap1 = ref_seq
-            adj_hap0 = cohort_start
-            adj_hap1 = cohort_start
-            diff_hap0 = 0
-            diff_hap1 = 0
-            prev_start0 = -1
-            prev_start1 = -1
+            seq_hap0, seq_hap1 = ref_seq, ref_seq
+            adj_hap0, adj_hap1 = cohort_start, cohort_start
+            diff_hap0, diff_hap1     =  0,  0
+            prev_start0, prev_start1 = -1, -1
             l_diff0 = var_start - cohort_start
             r_diff0 = cohort_maxstop - var_stop
             l_diff1 = l_diff0
             r_diff1 = r_diff0
-            for c_var in cohort_vars:
+            for c_var in cohort_vars: # Modify the iterative parameters
                 hap_0, hap_1 = c_var.samples[0]['GT']
-                if c_var.start >= prev_start0 + diff_hap0:
-                    if c_var.start == prev_start0 + diff_hap0:
-                        set_conflict_vars.add(prev_start0)
-                        set_conflict_vars.add(c_var.start)
+                if c_var.start > prev_start0 + diff_hap0: # checking if there are overlaps
                     adj_hap0 += diff_hap0
                     seq_hap0, diff_hap0 = switch_var_seq(c_var, seq_hap0, adj_hap0, hap_0)
                     prev_start0 = c_var.start
@@ -512,13 +476,10 @@ def variant_seq(
                         l_diff0 -= diff_hap0
                     elif c_var.start != var.start:
                         r_diff0 -= diff_hap0
-                else:
+                else: # overlapping variants are consider conflicts
                     set_conflict_vars.add(prev_start0)
                     set_conflict_vars.add(c_var.start)
-                if c_var.start >= prev_start1 + diff_hap1:
-                    if c_var.start == prev_start1 + diff_hap1:
-                        set_conflict_vars.add(prev_start1)
-                        set_conflict_vars.add(c_var.start)
+                if c_var.start > prev_start1 + diff_hap1:
                     adj_hap1 += diff_hap1
                     seq_hap1, diff_hap1 = switch_var_seq(c_var, seq_hap1, adj_hap1, hap_1)
                     prev_start1 = c_var.start
