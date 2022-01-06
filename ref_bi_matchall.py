@@ -416,11 +416,42 @@ def switch_var_seq(
         return ref[:var.start-start] + alt + ref[var.stop-start:], len(var.ref) - len(alt)
 
 
+def switch_cohort_var_seq(
+        #TODO
+        t_var_start :int,                   # target variant
+        prev_start  :int,                   # for checking overlap
+        prev_diff   :int,                   # for checking overlap
+        c_var       :pysam.VariantRecord,   # variants in the padding
+        ref_seq     :int,
+        begin_pos   :int,
+        hap_info    :int,
+        l_diff      :int,                   # left side boundary info
+        r_diff      :int,                   # right side boundary info
+        set_conflict_vars: set
+        )-> tuple :
+    """
+    Switching thre ref sequence according a bunch or variants, skip the conflicting variants
+    """
+    if c_var.start > prev_start + prev_diff: # or (c_var.start == prev_start and len(c_var.ref) == len(c_var.alts[hap_info])):
+        begin_pos += prev_diff
+        var_seq, diff_hap = switch_var_seq(c_var, ref_seq, begin_pos, hap_info)
+        prev_start = c_var.start
+        if c_var.start < t_var_start:
+            l_diff -= diff_hap
+        elif c_var.start != t_var_start:
+            r_diff -= diff_hap
+        return (var_seq, diff_hap, prev_start, l_diff, r_diff, set_conflict_vars)
+    else:
+        set_conflict_vars.add(c_var.start)
+        return (ref_seq, 0, prev_start, l_diff, r_diff, set_conflict_vars)
+
+
+
 def variant_seq(
         f_vcf   :pysam.VariantFile,
         f_fasta :pysam.FastaFile,
         padding :int=5
-        )-> dict:
+        )-> set: # set_conflict, dict_var_haps
     """
     Output
         dictionary containing the sequences nearby the variants
@@ -439,16 +470,22 @@ def variant_seq(
         ref_name = var.contig
         var_start = var.start - padding
         var_stop  = var.stop  + padding
-#        print(var.start)
         
         cohort_vars = list(f_vcf.fetch(var.contig, var_start, var_stop))
-        if len(cohort_vars) > 1: # the case where variants are nearby
-            cohort_start = min(var_start, min([v.start for v in cohort_vars]))
+        if len(cohort_vars) > 1: # the case where variants in the padding area
+            # Expanding to the padding variants' padding area
+            cohort_start = min(var_start, min([v.start-padding for v in cohort_vars]))
             cohort_maxstop = var_stop
             for v in cohort_vars:
-                cohort_maxstop = max(cohort_maxstop, max([v.start + len(a) for a in v.alleles]))
-#                print('\t', v.start)
+                cohort_maxstop = max(cohort_maxstop, max([v.start + len(a) + padding for a in v.alleles]))
+            # Iterate until there are no variants in the padding area
+            while cohort_vars != list(f_vcf.fetch(var.contig, cohort_start, cohort_maxstop)):
+                cohort_vars = list(f_vcf.fetch(var.contig, cohort_start, cohort_maxstop))
+                cohort_start = min(cohort_start, min([v.start-padding for v in cohort_vars]))
+                for v in cohort_vars:
+                    cohort_maxstop = max(cohort_maxstop, max([v.start + len(a) + padding for a in v.alleles]))
 
+            # iterative parameters
             ref_seq = f_fasta.fetch(reference=var.contig, start= cohort_start, end = cohort_maxstop)
             seq_hap0 = ref_seq
             seq_hap1 = ref_seq
@@ -458,29 +495,43 @@ def variant_seq(
             diff_hap1 = 0
             prev_start0 = -1
             prev_start1 = -1
+            l_diff0 = var_start - cohort_start
+            r_diff0 = cohort_maxstop - var_stop
+            l_diff1 = l_diff0
+            r_diff1 = r_diff0
             for c_var in cohort_vars:
                 hap_0, hap_1 = c_var.samples[0]['GT']
-                if c_var.start > prev_start0 + diff_hap0:
+                if c_var.start >= prev_start0 + diff_hap0:
+                    if c_var.start == prev_start0 + diff_hap0:
+                        set_conflict_vars.add(prev_start0)
+                        set_conflict_vars.add(c_var.start)
                     adj_hap0 += diff_hap0
                     seq_hap0, diff_hap0 = switch_var_seq(c_var, seq_hap0, adj_hap0, hap_0)
                     prev_start0 = c_var.start
+                    if c_var.start < var.start:
+                        l_diff0 -= diff_hap0
+                    elif c_var.start != var.start:
+                        r_diff0 -= diff_hap0
                 else:
+                    set_conflict_vars.add(prev_start0)
                     set_conflict_vars.add(c_var.start)
-                if c_var.start > prev_start1 + diff_hap1:
+                if c_var.start >= prev_start1 + diff_hap1:
+                    if c_var.start == prev_start1 + diff_hap1:
+                        set_conflict_vars.add(prev_start1)
+                        set_conflict_vars.add(c_var.start)
                     adj_hap1 += diff_hap1
                     seq_hap1, diff_hap1 = switch_var_seq(c_var, seq_hap1, adj_hap1, hap_1)
                     prev_start1 = c_var.start
+                    if c_var.start < var.start:
+                        l_diff1 -= diff_hap1
+                    elif c_var.start != var.start:
+                        r_diff1 -= diff_hap1
                 else:
+                    set_conflict_vars.add(prev_start1)
                     set_conflict_vars.add(c_var.start)
 
-            l_diff = var_start - cohort_start
-            r_diff = var_stop  - cohort_maxstop
-            if r_diff == 0:
-                seq_hap0 = seq_hap0[l_diff:]
-                seq_hap1 = seq_hap1[l_diff:]
-            else:
-                seq_hap0 = seq_hap0[l_diff:r_diff]
-                seq_hap1 = seq_hap1[l_diff:r_diff]
+            seq_hap0 = seq_hap0[max(0,l_diff0):len(seq_hap0) - max(0,r_diff0)]
+            seq_hap1 = seq_hap1[max(0,l_diff1):len(seq_hap1) - max(0,r_diff1)]
         else: # single variant
             ref_seq = f_fasta.fetch(reference=var.contig, start= var_start, end = var_stop)
             hap_0, hap_1 = var.samples[0]['GT']
@@ -490,7 +541,7 @@ def variant_seq(
         if dict_ref_var_seqs[ref_name].get((var.start)):
             print("WARNNING! Duplicate variant at contig:", var.contig, ",pos:", var.start)
         dict_ref_var_seqs[ref_name][(var.start)] = (seq_hap0, seq_hap1)
-    return dict_ref_var_seqs
+    return set_conflict_vars, dict_ref_var_seqs
 
 
 
@@ -511,12 +562,19 @@ if __name__ == "__main__":
     f_vcf   = pysam.VariantFile(fn_vcf)
     f_bam   = pysam.AlignmentFile(fn_sam)
     f_fasta = pysam.FastaFile(fn_fasta)
-    dict_ref_var_seqs = variant_seq(
+    padding = 10
+    set_conflict_vars, dict_ref_var_seqs = variant_seq(
             f_vcf=f_vcf,
             f_fasta=f_fasta,
-            padding=15)
+            padding=padding)
+    # extend conflict set
+    for pos in list(set_conflict_vars):
+        for extend in range(pos-padding, pos+padding):
+            set_conflict_vars.add(extend)
     for key, value in dict_ref_var_seqs['chr21'].items():
         #print(key, value)
+        if key in set_conflict_vars:
+            continue
         print('>' + str(key))
         print(value[1])
     """
