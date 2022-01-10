@@ -316,10 +316,10 @@ def variant_boundary(
 
 
 def compare_vcf_sam(
-    f_vcf:   pysam.VariantFile,
-    f_bam:   pysam.AlignmentFile,
-    f_fasta: pysam.FastaFile,
-    padding: int=5
+    f_vcf   :pysam.VariantFile,
+    f_sam   :pysam.AlignmentFile,
+    f_fasta :pysam,FastaFile,
+    padding :int=5
     ) -> dict:
     """
     take the reads and print the related cohort variants sequences
@@ -330,7 +330,7 @@ def compare_vcf_sam(
     for ref_name in f_fasta.references:
         dict_chr_sam[ref_name] = []
 
-    for segment in f_bam:
+    for segment in f_sam:
         flag = segment.flag
         if (flag & 4): # bitwise AND 4, segment unmapped
             continue
@@ -400,6 +400,145 @@ def compare_vcf_sam(
     return dict_chr_sam
 
 
+def map_read_to_ref(
+    read_start   :int,
+    read_end     :int,
+    cigar_tuples :list
+    ) -> dict:
+    """
+    return the mapping of ref->read position
+    """
+    dict_read_map = {}
+    ref_curser  = read_start
+    read_curser = 0
+    for pair_info in cigar_tuples:
+        code, runs = pair_info
+        if code == 0 or code == 7 or code == 8: # M or = or X
+            for pos in range(ref_curser, ref_curser + runs):
+                dict_read_map[pos] = read_curser
+                read_curser += 1
+            ref_curser += runs
+        elif code == 1: # I
+            dict_read_map[ref_curser] = read_curser
+            ref_curser  += 1
+            read_curser += runs
+        elif code == 2: # D
+            for pos in range(ref_curser, ref_curser + runs):
+                dict_read_map[pos] = read_curser
+            read_curser += 1
+            ref_curser += runs
+        elif code == 4 or code == 5: # S or H, pysam already parsed
+            pass
+        else:
+            print ("ERROR: unexpected cigar code in sequence", query_name)
+    return dict_read_map
+
+
+def match_hap(
+        var_start   :int,
+        read_map    :dict,
+        seq_read    :str,
+        seq_hap     :str,
+        padding     :int
+        ) -> bool:
+    """
+    Adjust and compare the two sequences
+    """
+    print("var.start", var_start)
+    print("old hap: ", seq_hap)
+    r_start = read_map[var_start]
+    if r_start == -1:
+        print("+++++++++++++++++++++++++++++++")
+    l_bound = r_start - padding
+    r_bound = l_bound + len(seq_hap)
+    print('lr_bounds', l_bound, r_bound)
+    if l_bound < 0:
+        seq_hap = seq_hap[-l_bound:]
+        l_bound = 0
+    if r_bound > len(seq_read):
+        seq_hap = seq_hap[:len(seq_read)-r_bound]
+        r_bound = len(seq_read)
+    print("new hap: ", seq_hap)
+    print("var read:", seq_read[l_bound:r_bound])
+    if seq_read[l_bound:r_bound] == seq_hap:
+        return True
+    else:
+        return False
+
+
+def compare_sam_to_haps(
+    f_vcf           :pysam.VariantFile,
+    f_sam           :pysam.AlignmentFile,
+    dict_ref_haps   :dict,
+    padding         :int=5
+    ) -> dict:
+    """
+    Input:  f_sam file
+    Output: ref bias dictionary according to variants
+    """
+    # build up the ref bias dictionary
+    dict_ref_var_bias = {}
+    for ref_name in dict_ref_haps.keys():
+        dict_ref_var_bias[ref_name] = {}
+        for start_pos in dict_ref_haps[ref_name]:
+            # n_var has hap0, hap1, and others
+            dict_ref_var_bias[ref_name][start_pos] = {'n_read':[0,0], 'n_var':[0,0,0], 'map_q':[0,0]}
+    
+    # scanning all the read alignments
+    for segment in f_sam:
+        flag = segment.flag
+        if (flag & 4): # bitwise AND 4, segment unmapped
+            continue
+        # aligned read information
+        ref_name     = segment.reference_name
+        seq_name     = segment.query_name
+        pos_start    = segment.reference_start # start position in genome coordiante, need +1 for vcf coordinate
+        pos_end      = segment.reference_end
+        cigar_tuples = segment.cigartuples
+        mapq         = segment.mapping_quality
+        rg_tag       = segment.get_tag("RG")
+        read_seq     = segment.query_alignment_sequence # aligned sequence without SoftClip part
+        
+        related_vars = list(f_vcf.fetch(ref_name, pos_start, pos_end)) # list of pysam.variant
+        for idx, var in enumerate(related_vars): # make sure the variants are totally contained in the read
+            if var.start < pos_start or var.stop > pos_end-1:
+                related_vars.pop(idx)
+        if related_vars == []:
+            continue
+        dict_read_map = map_read_to_ref(read_start=pos_start, read_end=pos_end,cigar_tuples=cigar_tuples)
+        print(pos_start)
+        print(cigar_tuples)
+        for var in related_vars:
+            seq_hap0, seq_hap1 = dict_ref_haps[ref_name][var.start]
+
+            print("==============================")
+            #fetching the sequence in the read_seq regarding to the variant
+            match_flag = False
+            if match_hap(var.start, dict_read_map, read_seq, seq_hap0, padding):
+                dict_ref_var_bias[ref_name][var.start]['n_var'][0] += 1
+                match_flag = True
+            if match_hap(var.start, dict_read_map, read_seq, seq_hap1, padding):
+                dict_ref_var_bias[ref_name][var.start]['n_var'][1] += 1
+                match_flag = True
+            if match_flag == False:
+                dict_ref_var_bias[ref_name][var.start]['n_var'][2] += 1
+            
+            # standard updating of read number and mapping quality
+            if 'hapA' == rg_tag:
+                dict_ref_var_bias[ref_name][var.start]['n_read'][0] += 1
+                dict_ref_var_bias[ref_name][var.start]['map_q'][0]  += mapq
+            elif 'hapB' == rg_tag:
+                dict_ref_var_bias[ref_name][var.start]['n_read'][1] += 1
+                dict_ref_var_bias[ref_name][var.start]['map_q'][1]  += mapq
+            else:
+                print("WARNING, there is a read without haplotype information!!")
+        print(dict_ref_var_bias['chr21'][14238188])
+        print(dict_ref_var_bias['chr21'][14238200])
+        print(dict_ref_var_bias['chr21'][14238206])
+
+    return dict_ref_var_bias
+
+
 def switch_var_seq(
         var     :pysam.VariantRecord,
         ref     :str,
@@ -420,7 +559,7 @@ def variant_seq(
         f_vcf   :pysam.VariantFile,
         f_fasta :pysam.FastaFile,
         padding :int=5
-        )-> set: # set_conflict, dict_var_haps
+        )-> tuple: # dict_set_conflict_vars, dict_var_haps
     """
     Output
         dictionary containing the sequences nearby the variants
@@ -431,11 +570,12 @@ def variant_seq(
         set containing the conflict variants
         - note: not include the variants within the padding distance to conflict variants
     """
-    dict_ref_var_seqs = {}
+    dict_ref_haps = {}
+    dict_set_conflict_vars = {}
     for ref_name in f_fasta.references:
-        dict_ref_var_seqs[ref_name] = {}
+        dict_ref_haps[ref_name] = {}
+        dict_set_conflict_vars[ref_name] = set()
 
-    set_conflict_vars = set()
     list_f_vcf = list(f_vcf)
     for var in list_f_vcf:
         ref_name = var.contig
@@ -477,8 +617,8 @@ def variant_seq(
                     elif c_var.start != var.start:
                         r_diff0 -= diff_hap0
                 else: # overlapping variants are consider conflicts
-                    set_conflict_vars.add(prev_start0)
-                    set_conflict_vars.add(c_var.start)
+                    dict_set_conflict_vars[ref_name].add(prev_start0)
+                    dict_set_conflict_vars[ref_name].add(c_var.start)
                 if c_var.start > prev_start1 + diff_hap1:
                     adj_hap1 += diff_hap1
                     seq_hap1, diff_hap1 = switch_var_seq(c_var, seq_hap1, adj_hap1, hap_1)
@@ -488,8 +628,8 @@ def variant_seq(
                     elif c_var.start != var.start:
                         r_diff1 -= diff_hap1
                 else:
-                    set_conflict_vars.add(prev_start1)
-                    set_conflict_vars.add(c_var.start)
+                    dict_set_conflict_vars[ref_name].add(prev_start1)
+                    dict_set_conflict_vars[ref_name].add(c_var.start)
 
             seq_hap0 = seq_hap0[max(0,l_diff0):len(seq_hap0) - max(0,r_diff0)]
             seq_hap1 = seq_hap1[max(0,l_diff1):len(seq_hap1) - max(0,r_diff1)]
@@ -499,10 +639,15 @@ def variant_seq(
             seq_hap0,_ = switch_var_seq(var, ref_seq, var_start, hap_0)
             seq_hap1,_ = switch_var_seq(var, ref_seq, var_start, hap_1)
 
-        if dict_ref_var_seqs[ref_name].get((var.start)):
+        if dict_ref_haps[ref_name].get((var.start)):
             print("WARNNING! Duplicate variant at contig:", var.contig, ",pos:", var.start)
-        dict_ref_var_seqs[ref_name][(var.start)] = (seq_hap0, seq_hap1)
-    return set_conflict_vars, dict_ref_var_seqs
+        
+        
+        # FOR DEBUG!!!!!
+        if var.start > 14239000:
+            break
+        dict_ref_haps[ref_name][(var.start)] = (seq_hap0, seq_hap1)
+    return dict_set_conflict_vars, dict_ref_haps
 
 
 
@@ -521,28 +666,35 @@ if __name__ == "__main__":
     fn_output = args.out
     
     f_vcf   = pysam.VariantFile(fn_vcf)
-    f_bam   = pysam.AlignmentFile(fn_sam)
+    f_sam   = pysam.AlignmentFile(fn_sam)
     f_fasta = pysam.FastaFile(fn_fasta)
-    padding = 10
-    set_conflict_vars, dict_ref_var_seqs = variant_seq(
+    padding = 5
+    dict_set_conflict_vars, dict_ref_haps = variant_seq(
             f_vcf=f_vcf,
             f_fasta=f_fasta,
             padding=padding)
     # extend conflict set
-    for pos in list(set_conflict_vars):
-        for extend in range(pos-padding, pos+padding):
-            set_conflict_vars.add(extend)
-    for key, value in dict_ref_var_seqs['chr21'].items():
+    for ref_name in dict_set_conflict_vars.keys():
+        for pos in list(dict_set_conflict_vars[ref_name]):
+            for extend in range(pos-padding, pos+padding):
+                dict_set_conflict_vars[ref_name].add(extend)
+    """
+    for key, value in dict_ref_haps['chr21'].items():
         #print(key, value)
-        if key in set_conflict_vars:
+        if key in dict_set_conflict_vars['chr21']:
             continue
         print('>' + str(key))
-        print(value[1])
+        print(value[0])
     """
-    dict_chr_bias = compare_vcf_sam(
-            f_vcf=f_vcf, 
-            f_bam=f_bam, 
-            f_fasta=f_fasta)"""
+    dict_ref_bias = compare_sam_to_haps(
+            f_vcf=f_vcf,
+            f_sam=f_sam,
+            dict_ref_haps=dict_ref_haps,
+            padding=padding)
+    for key, value in dict_ref_bias['chr21'].items():
+        if value['n_read'][0] == 0:
+            continue
+        print(key, value)
     #output_report(dict_chr_bias, fn_output)
 
 
