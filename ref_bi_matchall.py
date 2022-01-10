@@ -169,38 +169,6 @@ def fetch_nearby_cohort(
 
 
 
-def output_report(dict_chr_bias, fn_output):
-    f_all = open(fn_output, 'w')
-    f_gap = open(fn_output + '.gap', 'w')
-    f_SNP = open(fn_output + '.SNP', 'w')
-    f_all.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tGAP_COUNT\tOTHER_COUNT\tNUM_READS\tSUM_MAPQ\tREAD_DISTRIBUTION\tGAP\n")
-    f_gap.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tGAP_COUNT\tOTHER_COUNT\tNUM_READS\tSUM_MAPQ\tREAD_DISTRIBUTION\n")
-    f_SNP.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tGAP_COUNT\tOTHER_COUNT\tNUM_READS\tSUM_MAPQ\tREAD_DISTRIBUTION\n")
-    output_string = ""
-    for ref_name, dict_var_info in sorted(dict_chr_bias.items()):
-        for var_pos, var_info in sorted(dict_var_info.items()):
-            ref_count, alt_count, gap_count, other_count, num_read, sum_mapq, hap_alt_count, hap_oth_count, SNP_flag = var_info
-            output_string = (ref_name + '\t' + str(var_pos) + '\t')
-            if ref_count + alt_count == 0:
-                output_string += ("N/A")
-            else:
-                output_string += (format(ref_count / float(ref_count + alt_count), '.8f')) 
-            output_string += ("\t" + str(ref_count) + "\t" + str(alt_count) + "\t" + str(gap_count) + "\t" + str(other_count) + "\t" + str(num_read) + "\t" + str(sum_mapq) + "\t")
-            if hap_alt_count + hap_oth_count == 0: # read distribution section
-                output_string += ("N/A")
-            else:
-                output_string += (format((hap_alt_count)/(hap_alt_count + hap_oth_count), '.8f'))
-            if SNP_flag:
-                f_all.write(output_string + '\t' + '\n')
-                f_SNP.write(output_string + '\n')
-            else:
-                f_all.write(output_string + '\t' + '.' + '\n')
-                f_gap.write(output_string + '\n')
-    f_all.close()
-    f_gap.close()
-    f_SNP.close()
-
-
 
 def cohort_seq(
     cohort_vars: list,
@@ -444,26 +412,104 @@ def match_hap(
     """
     Adjust and compare the two sequences
     """
-    print("var.start", var_start)
-    print("old hap: ", seq_hap)
     r_start = read_map[var_start]
-    if r_start == -1:
-        print("+++++++++++++++++++++++++++++++")
     l_bound = r_start - padding
     r_bound = l_bound + len(seq_hap)
-    print('lr_bounds', l_bound, r_bound)
     if l_bound < 0:
         seq_hap = seq_hap[-l_bound:]
         l_bound = 0
     if r_bound > len(seq_read):
         seq_hap = seq_hap[:len(seq_read)-r_bound]
         r_bound = len(seq_read)
-    print("new hap: ", seq_hap)
-    print("var read:", seq_read[l_bound:r_bound])
     if seq_read[l_bound:r_bound] == seq_hap:
         return True
     else:
         return False
+
+"""
+functions above are obsolete
+"""
+
+
+def output_report(
+        f_vcf                   :pysam.VariantFile,
+        dict_ref_bias           :dict,
+        dict_set_conflict_vars  :dict,
+        fn_output               :str
+        ) -> None:
+    """
+    Output the reference bias report to three different files:
+        - f_all: containing all the variants
+        - f_gap: contains only insertions and deletions
+        - f_SNP: contains only SNPs
+    """
+    f_all = open(fn_output, 'w')
+    f_gap = open(fn_output + '.gap', 'w')
+    f_SNP = open(fn_output + '.SNP', 'w')
+    f_all.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tOTHER_COUNT\tNUM_READS\tSUM_MAPQ\tREAD_DISTRIBUTION\tGAP\n")
+    f_gap.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tOTHER_COUNT\tNUM_READS\tSUM_MAPQ\tREAD_DISTRIBUTION\n")
+    f_SNP.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tOTHER_COUNT\tNUM_READS\tSUM_MAPQ\tREAD_DISTRIBUTION\n")
+    for var in f_vcf:
+        ref_name = var.contig
+        hap = var.samples[0]['GT']
+        # Filtering all the homozygous alleles or the alleles without reference
+        if (hap[0] != 0 and hap[1] != 0) or (hap[0] == 0 and hap[1] == 0):
+            continue
+        if hap[0] == 0:
+            idx_ref, idx_alt = 0, 1
+        else:
+            idx_ref, idx_alt = 1, 0
+        # Filtering the conflict vars
+        if var.start in dict_set_conflict_vars[ref_name]:
+            continue
+        n_read = dict_ref_bias[ref_name][var.start]['n_read']
+        n_var  = dict_ref_bias[ref_name][var.start]['n_var']
+        map_q  = dict_ref_bias[ref_name][var.start]['map_q']
+        output_string = (ref_name + '\t' + str(var.start+1) + '\t')
+        if sum(n_var[:2]) == 0:
+            output_string += ("N/A")
+        else:
+            output_string += (format(n_var[idx_ref] / float(sum(n_var[:2])), '.8f'))
+        output_string += ("\t" + str(n_var[idx_ref]) + "\t" + str(n_var[idx_alt]) + "\t" + str(n_var[2]) + "\t" + str(sum(n_read)) + "\t" + str(sum(map_q)) + "\t")
+        if sum(n_read) == 0:
+            output_string += ("N/A")
+        else:
+            output_string += (format(n_read[idx_ref] / float(sum(n_read[:2])), '.8f'))
+        
+        if len(var.ref) ==  len(var.alts[ hap[idx_alt] - 1]): # length of ref is equal to length of 
+            f_all.write(output_string + '\t' + '\n')
+            f_SNP.write(output_string + '\n')
+        else:
+            f_all.write(output_string + '\t' + '.\n')
+            f_gap.write(output_string + '\n')
+    
+    f_all.close()
+    f_gap.close()
+    f_SNP.close()
+
+
+def hap_inside(
+        seq_read    :str,
+        seq_hap     :str,
+        padding     :int
+        ) -> bool:
+    """
+    Finding if the haplotype is in the read
+    Also considering the boundary condition
+    One padding side can be omitted
+    """
+    if seq_hap in seq_read:
+        return True
+    else:
+        len_hap = len(seq_hap)
+        for idx in range(1,padding):
+            # checking read left side
+            if seq_hap[idx:] == seq_read[:len_hap - idx]:
+                return True
+            # checking read right side
+            if seq_hap[:-idx] == seq_read[idx - len_hap:]:
+                return True
+    return False
 
 
 def compare_sam_to_haps(
@@ -500,24 +546,26 @@ def compare_sam_to_haps(
         read_seq     = segment.query_alignment_sequence # aligned sequence without SoftClip part
         
         related_vars = list(f_vcf.fetch(ref_name, pos_start, pos_end)) # list of pysam.variant
+        """
         for idx, var in enumerate(related_vars): # make sure the variants are totally contained in the read
             if var.start < pos_start or var.stop > pos_end-1:
                 related_vars.pop(idx)
         if related_vars == []:
             continue
         dict_read_map = map_read_to_ref(read_start=pos_start, read_end=pos_end,cigar_tuples=cigar_tuples)
-        print(pos_start)
-        print(cigar_tuples)
+        """
         for var in related_vars:
             seq_hap0, seq_hap1 = dict_ref_haps[ref_name][var.start]
 
-            print("==============================")
+            #print("==============================")
             #fetching the sequence in the read_seq regarding to the variant
             match_flag = False
-            if match_hap(var.start, dict_read_map, read_seq, seq_hap0, padding):
+            #if match_hap(var.start, dict_read_map, read_seq, seq_hap0, padding):
+            if hap_inside(read_seq, seq_hap0, padding):
                 dict_ref_var_bias[ref_name][var.start]['n_var'][0] += 1
                 match_flag = True
-            if match_hap(var.start, dict_read_map, read_seq, seq_hap1, padding):
+            #if match_hap(var.start, dict_read_map, read_seq, seq_hap1, padding):
+            if hap_inside(read_seq, seq_hap1, padding):
                 dict_ref_var_bias[ref_name][var.start]['n_var'][1] += 1
                 match_flag = True
             if match_flag == False:
@@ -532,9 +580,11 @@ def compare_sam_to_haps(
                 dict_ref_var_bias[ref_name][var.start]['map_q'][1]  += mapq
             else:
                 print("WARNING, there is a read without haplotype information!!")
+        """
         print(dict_ref_var_bias['chr21'][14238188])
         print(dict_ref_var_bias['chr21'][14238200])
         print(dict_ref_var_bias['chr21'][14238206])
+        """
 
     return dict_ref_var_bias
 
@@ -642,10 +692,9 @@ def variant_seq(
         if dict_ref_haps[ref_name].get((var.start)):
             print("WARNNING! Duplicate variant at contig:", var.contig, ",pos:", var.start)
         
-        
-        # FOR DEBUG!!!!!
-        if var.start > 14239000:
-            break
+        ## FOR DEBUG!!!!!
+        #if var.start > 14239000:
+        #    break
         dict_ref_haps[ref_name][(var.start)] = (seq_hap0, seq_hap1)
     return dict_set_conflict_vars, dict_ref_haps
 
@@ -669,6 +718,7 @@ if __name__ == "__main__":
     f_sam   = pysam.AlignmentFile(fn_sam)
     f_fasta = pysam.FastaFile(fn_fasta)
     padding = 5
+    print("Start building the variant maps...")
     dict_set_conflict_vars, dict_ref_haps = variant_seq(
             f_vcf=f_vcf,
             f_fasta=f_fasta,
@@ -686,15 +736,24 @@ if __name__ == "__main__":
         print('>' + str(key))
         print(value[0])
     """
+    print("Start comparing reads to the variant map...")
     dict_ref_bias = compare_sam_to_haps(
             f_vcf=f_vcf,
             f_sam=f_sam,
             dict_ref_haps=dict_ref_haps,
             padding=padding)
+    """
     for key, value in dict_ref_bias['chr21'].items():
         if value['n_read'][0] == 0:
             continue
         print(key, value)
-    #output_report(dict_chr_bias, fn_output)
+    """
+    f_vcf   = pysam.VariantFile(fn_vcf)
+    print("Start output report...")
+    output_report(
+            f_vcf=f_vcf,
+            dict_ref_bias=dict_ref_bias,
+            dict_set_conflict_vars=dict_set_conflict_vars, 
+            fn_output=fn_output)
 
 
