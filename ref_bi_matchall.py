@@ -8,215 +8,6 @@ import pysam
 import numpy as np
 
 
-def parse_vcf_to_dict(fn_vcf):
-    """ load the vcf file to a dict{list_info} according to chromosome name """
-    print("Start parsing the vcf file", fn_vcf)
-    in_vcf_file = pysam.VariantFile(fn_vcf, 'r')
-    count_het = 0
-    dict_chr_vcf = {}
-    for segment in in_vcf_file:
-        ref_name = segment.contig
-        pos      = segment.pos
-        ref      = segment.ref
-        list_alt = segment.alts
-        hap_info = str(segment).split()[9] # "0|0", "1|0", "0|1" tag
-        SNP_flag = True
-        if len(ref) > 1 or len(list_alt[-1]) > 1:  # separate SNP and gap sites
-            SNP_flag = False
-        if ref_name not in dict_chr_vcf.keys():
-            dict_chr_vcf[ref_name] = [[pos, ref, list_alt, hap_info, SNP_flag]]
-        else:
-            dict_chr_vcf[ref_name].append([pos, ref, list_alt, hap_info, SNP_flag])
-    in_vcf_file.close()
-    return dict_chr_vcf
-   
-
-def parse_sam_to_dict(fn_sam, reference): # utilizing indelpost decomposition
-    """ load the sam file to a dict{list_info} according to chromosome name """
-    print("Start parsing the sam file", fn_sam)
-    in_sam_file = pysam.AlignmentFile(fn_sam, "r")
-    dict_chr_sam = {}
-    for segment in in_sam_file:
-        flag = segment.flag
-        if (flag & 4): # bitwise AND 4, segment unmapped
-            continue
-        ref_name = segment.reference_name
-        if ref_name.endswith('A') or ref_name.endswith('B'): # ignores haplotype suffixes
-            ref_name = ref_name[:-1]
-            
-        seq_name  = segment.query_name
-        #cigar_tuples = segment.cigartuples
-        ref_seq = segment.get_reference_sequence()
-        start_pos = segment.reference_start # start position in genome coordiante, need +1 for vcf coordinate
-        end_pos   = start_pos + len(ref_seq)
-        mapq      = segment.mapping_quality
-        rg_tag    = segment.get_tag("RG")
-        
-        sequence  = segment.query_alignment_sequence # aligned sequence without SoftClip part
-        if ref_name not in dict_chr_sam.keys(): # initialize the dictionary according to chromosome name
-            dict_chr_sam[ref_name] = [] 
-
-        list_var = []
-        if ref_seq != sequence:
-            v = Variant(ref_name, start_pos+1, ref_seq, sequence, reference)
-            for var in v.decompose_complex_variant():
-                list_var.append((var.pos, var.ref, var.alt))
-        dict_chr_sam[ref_name].append((start_pos+1, end_pos+1, mapq, rg_tag, list_var))
-    in_sam_file.close()
-    return dict_chr_sam
-
-
-
-
-def fetch_nearby_cohort(
-    var: pysam.VariantRecord,
-    f_query_vcf: pysam.VariantFile,
-    f_fasta: pysam.FastaFile,
-    update_info: dict,
-    query_info: dict=None,
-    padding: int=0,
-    debug: bool=False
-    ) -> pysam.VariantRecord:
-    ''' Fetch nearby cohorts and local REF haplotype for a variant.
-    Inputs:
-        - var: Target variant.
-        - f_query_vcf: Queried VCF file (e.g. a cohort VCF).
-        - f_fasta: REF FASTA file.
-        - update_info: VCF INFO field to update. 'ID', 'Number', 'Type' are required.
-            E.g.
-            {'ID': 'AF', 'Number': 'A', 'Type': 'Float', 'Description': 'Allele Frequency estimate for each alternate allele'}
-        - query_info: VCF INFO field to query. If not set, use `update_info`.
-    Raises:
-        - ValueError: If fetched variants don't share the same contig.
-    '''
-    # var.start: 0-based; var.pos: 1-based
-    # Pysam uses 0-based
-    # var_region = (var.contig, var.start, var.start + max(var.alleles))
-    # Fetch cohort variants
-
-    
-    # COMPARE VCF AND SAM FILE FOR VARIANTs
-    print("Start comparing the vcf and sam file")
-    dict_chr_bias = {}
-    for ref_name, list_sam_info in sorted(dict_chr_sam.items()):
-        list_het_info = dict_chr_vcf[ref_name]
-        dict_chr_bias[ref_name] = {}
-        for het_info in list_het_info:
-            # the list store the vcf information for ref_count, alt_count, gap_count, other_count, num_read, sum_mapq, hap_alt_count, hap_oth_count, SNP_flag
-            dict_chr_bias[ref_name][het_info[0]] = [0,0,0,0,0,0,0,0,het_info[4]] 
-
-        vcf_flag = False
-        vcf_low_bd = 0
-        for read_info in list_sam_info:
-            start_pos, end_pos, mapq, rg_tag, list_var = read_info
-            for idx in range(vcf_low_bd, len(list_het_info)):
-                var_st_pos = list_het_info[idx][0]
-                if var_st_pos in range(start_pos, end_pos): # if the vcf site is within the range of the read:
-                    if not vcf_flag:
-                        vcf_flag = True
-                        vcf_low_bd = idx
-                elif var_st_pos > end_pos: # the vcf site exceed the read
-                    break
-            vcf_flag = False
-            list_var_cover = list_het_info[vcf_low_bd:idx]
-            list_var_flag  = np.zeros(len(list_var_cover)) # 0:ref, 1:alt, 2:gap, 3:others
-            
-            # All-to-all comparison with indelPost
-            for var_sam_info in list_var:
-                s_pos, s_ref, s_alt = var_sam_info
-                '''
-                v1 = Variant("chr21", 14238195, 'TAATCCT', 'CTGGGCC',  reference)
-                v2 = Variant("chr21", 14238193, 'TCTAATCCT', 'TCCTGGGCC',  reference)
-                print("equivalent?", v1 == v2)
-                '''
-                bk_flag = False
-                # mismatches and insertions: simple comparison
-                for id_vcf, var_vcf_info in enumerate(list_var_cover):
-                    v_pos, v_ref, v_list_alt, v_hap_info, SNP_flag = var_vcf_info
-                    if s_pos == v_pos:
-                        if s_alt in v_list_alt:
-                            list_var_flag[id_vcf] = 1
-                        else:
-                            list_var_flag[id_vcf] = 3
-                        bk_flag = True
-                        break
-                if len(s_ref) <= len(s_alt) or bk_flag:
-                    pass
-                else: # deletions: need to consider gaps
-                    for id_vcf, var_vcf_info in enumerate(list_var_cover):
-                        if var_vcf_info in range(s_pos+1,s_pos+len(s_ref)-len(s_alt)+1):
-                            if list_var_flag[id_vcf] == 0:
-                                list_var_flag[id_vcf] =2
-            
-            for id_vcf, flag_var in enumerate(list_var_flag):
-                v_pos, _, _, v_hap_info, _ = list_var_cover[id_vcf]
-                dict_chr_bias[ref_name][v_pos][int(flag_var)] += 1  # variant information
-                dict_chr_bias[ref_name][v_pos][4] += 1              # read count
-                dict_chr_bias[ref_name][v_pos][5] += mapq           # mapq
-                if 'hapA' in rg_tag:                                # hap info
-                    if v_hap_info[0] =='0': # hapA
-                        dict_chr_bias[ref_name][v_pos][6] += 1
-                    else:
-                        dict_chr_bias[ref_name][v_pos][7] += 1
-                elif 'hapB' in rg_tag:
-                    if v_hap_info[0] =='0': # hapA
-                        dict_chr_bias[ref_name][v_pos][7] += 1
-                    else:
-                        dict_chr_bias[ref_name][v_pos][6] += 1
-                else:
-                    print("CAUTION, rg_tag haplotype information incorrect!")
-    return dict_chr_bias
-
-
-
-
-def cohort_seq(
-    cohort_vars: list,
-    ref: str,
-    padding: int=0,
-    debug: bool=False
-    ) -> list:
-    ''' 
-    Modified from matchall.match_allele
-    Only return the cohort reference/alternative sequences
-
-    Inputs:
-        - cohort_vars: list of pysam.VariantRecord. Fetched nearby cohorts.
-        - ref: Local REF haplotype
-
-    Returns:
-        - list_cohort_seqs: list of seqs nearby the variants
-    '''
-    if debug:
-        print('cohorts')
-        for c in cohort_vars:
-            print(f'{c}'.rstrip())
-            print('   ', c.start, c.stop, c.alleles)
-        print('ref =', ref)
-    
-    #start = min(var.start, min([v.start for v in cohort_vars]))
-    start = min([v.start for v in cohort_vars])
-    """
-    dict_hap_info = {}
-    for i, alt in enumerate(var.alts):
-        var_seq = ref[:var.start-start] + alt + ref[var.stop-start:]
-        dict_hap_info[var_seq] = 0
-        # dict_hap_info[var_seq] = 
-    print("dict_hap_info",dict_hap_info)
-    """
-    # Loop through matched cohort variants
-    list_cohort_seqs = []
-    for c_var in cohort_vars:
-        # print(c_var.info[info['ID']])
-        # Loop through each allele (index=`i`) in a cohort variant
-        list_sub_seqs = []
-        for i, alt in enumerate(c_var.alts):
-            c_var_seq = ref[:c_var.start-start] + alt + ref[c_var.stop-start:]
-            list_sub_seqs.append(c_var_seq)
-        list_cohort_seqs.append(list_sub_seqs)
-    return list_cohort_seqs
-
-
 def fetch_alt_seqs(
         var:pysam.VariantRecord,
         ref:str
@@ -249,123 +40,6 @@ def parse_MD(md_tag):
             list_chunk.append(('m', ele))
     return list_chunk
 
-
-def variant_boundary(
-        segment: pysam.AlignedSegment,
-        ) -> tuple:
-    """giving the closest distatnt to boundary of the aligned read"""
-    cigar_tuples = segment.cigartuples
-    md_tag       = segment.get_tag("MD")
-    md_tuples    = parse_MD(md_tag)
-    
-    # determine the left boundary
-    left_bd = 0
-    code, run = cigar_tuples[0]
-    if code == 0 or code == 7 or code == 8: # M or = or X
-        left_bd = run
-    m_code, m_run = md_tuples[0]
-    if m_code == 'M':
-        left_bd = min(m_run, left_bd)
-    else:
-        left_bd = 0
-
-    # determine the right boundary
-    right_bd = 0
-    code, run = cigar_tuples[-1]
-    if code == 0 or code == 7 or code == 8:
-        right_bd = run
-    m_code, m_run = md_tuples[-1]
-    if m_code == 'M':
-        right_bd = min(right_bd, m_run)
-    else:
-        right_bd = 0
-
-    return (left_bd, right_bd)
-
-
-def compare_vcf_sam(
-    f_vcf   :pysam.VariantFile,
-    f_sam   :pysam.AlignmentFile,
-    f_fasta :pysam,FastaFile,
-    padding :int=5
-    ) -> dict:
-    """
-    take the reads and print the related cohort variants sequences
-    """
-    # initialize the dictionary according to chromosome name
-    # TODO but I am not sure the usage of dict_chr_sam
-    dict_chr_sam = {}
-    for ref_name in f_fasta.references:
-        dict_chr_sam[ref_name] = []
-
-    for segment in f_sam:
-        flag = segment.flag
-        if (flag & 4): # bitwise AND 4, segment unmapped
-            continue
-        # aligned read information
-        ref_name = segment.reference_name
-        seq_name  = segment.query_name
-        #ref_seq = segment.get_reference_sequence()
-        pos_start = segment.reference_start # start position in genome coordiante, need +1 for vcf coordinate
-        pos_end   = segment.reference_end
-        mapq      = segment.mapping_quality
-        rg_tag    = segment.get_tag("RG")
-        sequence  = segment.query_alignment_sequence # aligned sequence without SoftClip part
-        
-        left_bd, right_bd = variant_boundary(segment)
-        left_pad  = max(0, left_bd - padding)
-        right_pad = max(0, right_bd - padding)
-
-        if right_pad == 0:
-            seq_var_segment = segment.query_alignment_sequence[left_pad:]
-        else:
-            seq_var_segment = segment.query_alignment_sequence[left_pad: -right_pad]
-        # print(segment.query_alignment_sequence)
-        # print(segment.get_reference_sequence())
-        print(seq_var_segment)
-        # print(left_bd, right_bd)
-        # print(left_pad, right_pad)
-
-        related_vars = list(f_vcf.fetch(ref_name, pos_start, pos_end)) # list of pysam.variant
-        if len(seq_var_segment) == 0: # TODO can adjust to the paddings
-            print("ALL CLEAR!")
-            continue
-        else:
-            cohort_bg = pos_start + left_pad
-            cohort_ed   = pos_end  - right_pad
-            cohort_vars = list(f_vcf.fetch(ref_name, cohort_bg, cohort_ed)) # list of pysam.variant
-            if len(cohort_vars) == 0:
-                #TODO
-                print("NOT RELATED!")
-                continue
-
-            # TODO cohort_start and cohort_maxstop needs to be fixed too
-            cohort_start = min(cohort_bg, min([v.start for v in cohort_vars]))
-            cohort_maxstop = cohort_ed
-            for v in cohort_vars:
-                cohort_maxstop = max(cohort_maxstop, max([v.start + len(a) for a in v.alleles]))
-            print(cohort_bg, cohort_start, cohort_ed, cohort_maxstop)
-            
-            #for var in cohort_vars:
-            #    print(var.pos, var.ref, var.alts)
-            try:
-                ref_seq = f_fasta.fetch(
-                    reference=ref_name, start=cohort_start, end=cohort_maxstop)
-            except:
-                update_info_empty(var, update_info)
-                print(f'Warning: encounter the edge of a contig. Set "{update_info["ID"]}" as the init value.', file=sys.stderr)
-                return var
-            # print(cohort_seq(
-            #     cohort_vars=cohort_vars,
-            #     ref=ref_seq,
-            #     padding=padding,
-            #     debug=False))
-            # print("=============")
-            for var in cohort_vars:
-                ref_seq = f_fasta.fetch(reference=ref_name, start=var.start-5, end=var.stop+5)
-                print(var.start, fetch_alt_seqs(var, ref_seq))
-            print("=====================")
-    return dict_chr_sam
 
 
 def map_read_to_ref(
@@ -425,6 +99,7 @@ def match_hap(
         return True
     else:
         return False
+
 
 """
 functions above are obsolete
@@ -512,6 +187,64 @@ def hap_inside(
     return False
 
 
+def match_to_hap(
+        read_start  :int,
+        var_start   :int,
+        seq_read    :str,
+        seq_hap     :str,
+        cigar_tuples:tuple,
+        padding     :int
+        ) -> bool:
+    """
+    Adjust and compare the two sequences
+    """
+    if read_start > var_start:
+        return False
+
+    ref_curser  = read_start
+    read_curser = 0
+    for pair_info in cigar_tuples:
+        code, runs = pair_info
+        if code == 0 or code == 7 or code == 8: # M or = or X
+            ref_curser += runs
+            if ref_curser > var_start:
+                #TODO
+                read_curser += (runs - ref_curser + var_start)
+                break
+            else:
+                read_curser += runs
+        elif code == 1: # I
+            ref_curser  += 1
+            if ref_curser > var_start:
+                break
+            else:
+                read_curser += runs
+        elif code == 2: # D
+            ref_curser += runs
+            if ref_curser > var_start:
+                break
+            else:
+                read_curser += 1
+        elif code == 4 or code == 5: # S or H, pysam already parsed
+            pass
+        else:
+            print ("ERROR: unexpected cigar code in sequence")
+
+    r_start = read_curser
+    l_bound = r_start - padding
+    r_bound = l_bound + len(seq_hap)
+    if l_bound < 0:
+        seq_hap = seq_hap[-l_bound:]
+        l_bound = 0
+    if r_bound > len(seq_read):
+        seq_hap = seq_hap[:len(seq_read)-r_bound]
+        r_bound = len(seq_read)
+    if seq_read[l_bound:r_bound] == seq_hap:
+        return True
+    else:
+        return False
+
+
 def compare_sam_to_haps(
     f_vcf           :pysam.VariantFile,
     f_sam           :pysam.AlignmentFile,
@@ -552,24 +285,32 @@ def compare_sam_to_haps(
                 related_vars.pop(idx)
         if related_vars == []:
             continue
-        dict_read_map = map_read_to_ref(read_start=pos_start, read_end=pos_end,cigar_tuples=cigar_tuples)
         """
+        #dict_read_map = map_read_to_ref(read_start=pos_start, read_end=pos_end,cigar_tuples=cigar_tuples)
         for var in related_vars:
             seq_hap0, seq_hap1 = dict_ref_haps[ref_name][var.start]
 
             #print("==============================")
             #fetching the sequence in the read_seq regarding to the variant
             match_flag = False
-            #if match_hap(var.start, dict_read_map, read_seq, seq_hap0, padding):
-            if hap_inside(read_seq, seq_hap0, padding):
-                dict_ref_var_bias[ref_name][var.start]['n_var'][0] += 1
-                match_flag = True
-            #if match_hap(var.start, dict_read_map, read_seq, seq_hap1, padding):
-            if hap_inside(read_seq, seq_hap1, padding):
-                dict_ref_var_bias[ref_name][var.start]['n_var'][1] += 1
-                match_flag = True
-            if match_flag == False:
-                dict_ref_var_bias[ref_name][var.start]['n_var'][2] += 1
+            if var.start >= pos_start:
+                #if match_hap(var.start, dict_read_map, read_seq, seq_hap0, padding):
+                if match_to_hap(pos_start, var.start, read_seq, seq_hap0, cigar_tuples, padding):
+                    dict_ref_var_bias[ref_name][var.start]['n_var'][0] += 1
+                    match_flag = True
+                #if match_hap(var.start, dict_read_map, read_seq, seq_hap1, padding):
+                if match_to_hap(pos_start, var.start, read_seq, seq_hap1, cigar_tuples, padding):
+                    dict_ref_var_bias[ref_name][var.start]['n_var'][1] += 1
+                    match_flag = True
+            if not match_flag:
+                if hap_inside(read_seq, seq_hap0, padding):
+                    dict_ref_var_bias[ref_name][var.start]['n_var'][0] += 1
+                    match_flag = True
+                if hap_inside(read_seq, seq_hap1, padding):
+                    dict_ref_var_bias[ref_name][var.start]['n_var'][1] += 1
+                    match_flag = True
+                if match_flag == False:
+                    dict_ref_var_bias[ref_name][var.start]['n_var'][2] += 1
             
             # standard updating of read number and mapping quality
             if 'hapA' == rg_tag:
