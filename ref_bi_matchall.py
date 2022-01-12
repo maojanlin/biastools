@@ -187,6 +187,44 @@ def hap_inside(
     return False
 
 
+def locate_by_cigar(
+        read_start  :int,
+        target_pos  :int,
+        cigar_tuples:tuple
+        ) -> int:
+    """
+    return the location of a specific reference position in the read
+    according to the CIGAR string
+    """
+    ref_curser  = read_start
+    read_curser = 0
+    for pair_info in cigar_tuples:
+        code, runs = pair_info
+        if code == 0 or code == 7 or code == 8: # M or = or X
+            ref_curser += runs
+            if ref_curser > target_pos:
+                return read_curser + (runs - ref_curser + target_pos)
+            else:
+                read_curser += runs
+        elif code == 1: # I
+            ref_curser  += 1
+            if ref_curser > target_pos:
+                return read_curser
+            else:
+                read_curser += runs
+        elif code == 2: # D
+            ref_curser += runs
+            if ref_curser > target_pos:
+                return read_curser
+            else:
+                read_curser += 1
+        elif code == 4 or code == 5: # S or H, pysam already parsed
+            pass
+        else:
+            print ("ERROR: unexpected cigar code in sequence")
+    return read_curser
+
+
 def match_to_hap(
         read_start  :int,
         var_start   :int,
@@ -196,41 +234,21 @@ def match_to_hap(
         padding     :int
         ) -> bool:
     """
-    Adjust and compare the two sequences
+    1. Find the matching point of the variant on the read
+    2. Extend the padding on the read
+    3. compare the read to haplotype sequences
     """
     if read_start > var_start:
         return False
-
-    ref_curser  = read_start
-    read_curser = 0
-    for pair_info in cigar_tuples:
-        code, runs = pair_info
-        if code == 0 or code == 7 or code == 8: # M or = or X
-            ref_curser += runs
-            if ref_curser > var_start:
-                #TODO
-                read_curser += (runs - ref_curser + var_start)
-                break
-            else:
-                read_curser += runs
-        elif code == 1: # I
-            ref_curser  += 1
-            if ref_curser > var_start:
-                break
-            else:
-                read_curser += runs
-        elif code == 2: # D
-            ref_curser += runs
-            if ref_curser > var_start:
-                break
-            else:
-                read_curser += 1
-        elif code == 4 or code == 5: # S or H, pysam already parsed
-            pass
-        else:
-            print ("ERROR: unexpected cigar code in sequence")
-
-    r_start = read_curser
+    
+    # locating the variant site on the read
+    r_start = locate_by_cigar(
+            read_start=read_start,
+            target_pos=var_start,
+            cigar_tuples=cigar_tuples
+            )
+    
+    # matching
     l_bound = r_start - padding
     r_bound = l_bound + len(seq_hap)
     if l_bound < 0:
@@ -279,29 +297,20 @@ def compare_sam_to_haps(
         read_seq     = segment.query_alignment_sequence # aligned sequence without SoftClip part
         
         related_vars = list(f_vcf.fetch(ref_name, pos_start, pos_end)) # list of pysam.variant
-        """
-        for idx, var in enumerate(related_vars): # make sure the variants are totally contained in the read
-            if var.start < pos_start or var.stop > pos_end-1:
-                related_vars.pop(idx)
-        if related_vars == []:
-            continue
-        """
+        #fetching the sequence in the read_seq regarding to the variant
         #dict_read_map = map_read_to_ref(read_start=pos_start, read_end=pos_end,cigar_tuples=cigar_tuples)
         for var in related_vars:
             seq_hap0, seq_hap1 = dict_ref_haps[ref_name][var.start]
 
-            #print("==============================")
-            #fetching the sequence in the read_seq regarding to the variant
             match_flag = False
-            if var.start >= pos_start:
-                #if match_hap(var.start, dict_read_map, read_seq, seq_hap0, padding):
-                if match_to_hap(pos_start, var.start, read_seq, seq_hap0, cigar_tuples, padding):
-                    dict_ref_var_bias[ref_name][var.start]['n_var'][0] += 1
-                    match_flag = True
-                #if match_hap(var.start, dict_read_map, read_seq, seq_hap1, padding):
-                if match_to_hap(pos_start, var.start, read_seq, seq_hap1, cigar_tuples, padding):
-                    dict_ref_var_bias[ref_name][var.start]['n_var'][1] += 1
-                    match_flag = True
+            #if match_hap(var.start, dict_read_map, read_seq, seq_hap0, padding):
+            if match_to_hap(pos_start, var.start, read_seq, seq_hap0, cigar_tuples, padding):
+                dict_ref_var_bias[ref_name][var.start]['n_var'][0] += 1
+                match_flag = True
+            #if match_hap(var.start, dict_read_map, read_seq, seq_hap1, padding):
+            if match_to_hap(pos_start, var.start, read_seq, seq_hap1, cigar_tuples, padding):
+                dict_ref_var_bias[ref_name][var.start]['n_var'][1] += 1
+                match_flag = True
             if not match_flag:
                 if hap_inside(read_seq, seq_hap0, padding):
                     dict_ref_var_bias[ref_name][var.start]['n_var'][0] += 1
@@ -321,12 +330,6 @@ def compare_sam_to_haps(
                 dict_ref_var_bias[ref_name][var.start]['map_q'][1]  += mapq
             else:
                 print("WARNING, there is a read without haplotype information!!")
-        """
-        print(dict_ref_var_bias['chr21'][14238188])
-        print(dict_ref_var_bias['chr21'][14238200])
-        print(dict_ref_var_bias['chr21'][14238206])
-        """
-
     return dict_ref_var_bias
 
 
@@ -434,8 +437,9 @@ def variant_seq(
             print("WARNNING! Duplicate variant at contig:", var.contig, ",pos:", var.start)
         
         ## FOR DEBUG!!!!!
-        #if var.start > 14239000:
+        #if var.start > 7948695:
         #    break
+        
         dict_ref_haps[ref_name][(var.start)] = (seq_hap0, seq_hap1)
     return dict_set_conflict_vars, dict_ref_haps
 
