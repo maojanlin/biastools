@@ -121,9 +121,9 @@ def output_report(
     f_all = open(fn_output, 'w')
     f_gap = open(fn_output + '.gap', 'w')
     f_SNP = open(fn_output + '.SNP', 'w')
-    f_all.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tOTHER_COUNT\tNUM_READS\tSUM_MAPQ\tREAD_DISTRIBUTION\tGAP\n")
-    f_gap.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tOTHER_COUNT\tNUM_READS\tSUM_MAPQ\tREAD_DISTRIBUTION\n")
-    f_SNP.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tOTHER_COUNT\tNUM_READS\tSUM_MAPQ\tREAD_DISTRIBUTION\n")
+    f_all.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tBOTH_COUNT\tNEITHER_COUNT\tNUM_READS\tSUM_MAPQ\tREAD_DISTRIBUTION\tGAP\n")
+    f_gap.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tBOTH_COUNT\tNEITHER_COUNT\tNUM_READS\tSUM_MAPQ\tREAD_DISTRIBUTION\n")
+    f_SNP.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tBOTH_COUNT\tNEITHER_COUNT\tNUM_READS\tSUM_MAPQ\tREAD_DISTRIBUTION\n")
     for var in f_vcf:
         ref_name = var.contig
         hap = var.samples[0]['GT']
@@ -141,15 +141,16 @@ def output_report(
         n_var  = dict_ref_bias[ref_name][var.start]['n_var']
         map_q  = dict_ref_bias[ref_name][var.start]['map_q']
         output_string = (ref_name + '\t' + str(var.start+1) + '\t')
-        if sum(n_var[:2]) == 0:
+        # n_var[0,1,2,3] = hap0, hap1, both, others
+        if sum(n_var[:3]) == 0:
             output_string += ("N/A")
         else:
-            output_string += (format(n_var[idx_ref] / float(sum(n_var[:2])), '.8f'))
-        output_string += ("\t" + str(n_var[idx_ref]) + "\t" + str(n_var[idx_alt]) + "\t" + str(n_var[2]) + "\t" + str(sum(n_read)) + "\t" + str(sum(map_q)) + "\t")
+            output_string += (format((n_var[idx_ref]+0.5*n_var[2]) / float(sum(n_var[:3])), '.8f'))
+        output_string += ("\t" + str(n_var[idx_ref]) + "\t" + str(n_var[idx_alt]) + "\t" + str(n_var[2]) +"\t" + str(n_var[3]) + "\t" + str(sum(n_read)) + "\t" + str(sum(map_q)) + "\t")
         if sum(n_read) == 0:
             output_string += ("N/A")
         else:
-            output_string += (format(n_read[idx_ref] / float(sum(n_read[:2])), '.8f'))
+            output_string += (format(n_read[idx_ref] / float(sum(n_read)), '.8f'))
         
         if len(var.ref) ==  len(var.alts[ hap[idx_alt] - 1]): # length of ref is equal to length of 
             f_all.write(output_string + '\t' + '\n')
@@ -279,8 +280,8 @@ def compare_sam_to_haps(
     for ref_name in dict_ref_haps.keys():
         dict_ref_var_bias[ref_name] = {}
         for start_pos in dict_ref_haps[ref_name]:
-            # n_var has hap0, hap1, and others
-            dict_ref_var_bias[ref_name][start_pos] = {'n_read':[0,0], 'n_var':[0,0,0], 'map_q':[0,0]}
+            # n_var has hap0, hap1, both, and others
+            dict_ref_var_bias[ref_name][start_pos] = {'n_read':[0,0], 'n_var':[0,0,0,0], 'map_q':[0,0]}
     
     # scanning all the read alignments
     for segment in f_sam:
@@ -299,40 +300,44 @@ def compare_sam_to_haps(
         
         related_vars = list(f_vcf.fetch(ref_name, pos_start, pos_end)) # list of pysam.variant
         #fetching the sequence in the read_seq regarding to the variant
-        #dict_read_map = map_read_to_ref(read_start=pos_start, read_end=pos_end,cigar_tuples=cigar_tuples)
         for var in related_vars:
             seq_hap0, seq_hap1 = dict_ref_haps[ref_name][var.start]
 
-            match_flag = False
+            match_flag_0 = False
+            match_flag_1 = False
             # 1. Cohort alignment
             if dict_ref_cohorts[ref_name].get(var.start):
                 cohort_start, cohort_seq0, cohort_seq1 = dict_ref_cohorts[ref_name][var.start]
-                if match_to_hap(pos_start, cohort_start, read_seq, cohort_seq0, cigar_tuples, padding):
-                    dict_ref_var_bias[ref_name][var.start]['n_var'][0] += 1
-                    match_flag = True
-                if match_to_hap(pos_start, cohort_start, read_seq, cohort_seq1, cigar_tuples, padding):
-                    dict_ref_var_bias[ref_name][var.start]['n_var'][1] += 1
-                    match_flag = True
-            # 2. Believeing local alignment
-            if not match_flag:
-                #if match_hap(var.start, dict_read_map, read_seq, seq_hap0, padding):
-                if match_to_hap(pos_start, var.start, read_seq, seq_hap0, cigar_tuples, padding):
-                    dict_ref_var_bias[ref_name][var.start]['n_var'][0] += 1
-                    match_flag = True
-                #if match_hap(var.start, dict_read_map, read_seq, seq_hap1, padding):
-                if match_to_hap(pos_start, var.start, read_seq, seq_hap1, cigar_tuples, padding):
-                    dict_ref_var_bias[ref_name][var.start]['n_var'][1] += 1
-                    match_flag = True
-            # 3. Matchall comparison
-            if not match_flag:
-                if hap_inside(read_seq, seq_hap0, padding):
-                    dict_ref_var_bias[ref_name][var.start]['n_var'][0] += 1
-                    match_flag = True
-                if hap_inside(read_seq, seq_hap1, padding):
-                    dict_ref_var_bias[ref_name][var.start]['n_var'][1] += 1
-                    match_flag = True
-                if match_flag == False:
+                match_flag_0 = match_to_hap(pos_start, cohort_start, read_seq, cohort_seq0, cigar_tuples, padding)
+                match_flag_1 = match_to_hap(pos_start, cohort_start, read_seq, cohort_seq1, cigar_tuples, padding)
+                if match_flag_0 and match_flag_1:
                     dict_ref_var_bias[ref_name][var.start]['n_var'][2] += 1
+                elif match_flag_0:
+                    dict_ref_var_bias[ref_name][var.start]['n_var'][0] += 1
+                elif match_flag_1:
+                    dict_ref_var_bias[ref_name][var.start]['n_var'][1] += 1
+            # 2. Believeing local alignment
+            if not (match_flag_0 or match_flag_1):
+                match_flag_0 = match_to_hap(pos_start, var.start, read_seq, seq_hap0, cigar_tuples, padding)
+                match_flag_1 = match_to_hap(pos_start, var.start, read_seq, seq_hap1, cigar_tuples, padding)
+                if match_flag_0 and match_flag_1:
+                    dict_ref_var_bias[ref_name][var.start]['n_var'][2] += 1
+                elif match_flag_0:
+                    dict_ref_var_bias[ref_name][var.start]['n_var'][0] += 1
+                elif match_flag_1:
+                    dict_ref_var_bias[ref_name][var.start]['n_var'][1] += 1
+            # 3. Matchall comparison
+            if not (match_flag_0 or match_flag_1):
+                match_flag_0 = hap_inside(read_seq, seq_hap0, padding)
+                match_flag_1 = hap_inside(read_seq, seq_hap1, padding)
+                if match_flag_0 and match_flag_1:
+                    dict_ref_var_bias[ref_name][var.start]['n_var'][2] += 1
+                elif match_flag_0:
+                    dict_ref_var_bias[ref_name][var.start]['n_var'][0] += 1
+                elif match_flag_1:
+                    dict_ref_var_bias[ref_name][var.start]['n_var'][1] += 1
+                else:
+                    dict_ref_var_bias[ref_name][var.start]['n_var'][3] += 1
             
             # standard updating of read number and mapping quality
             if 'hapA' == rg_tag:
@@ -418,6 +423,7 @@ def variant_seq(
             seq_hap0, seq_hap1 = ref_seq, ref_seq
             adj_hap0, adj_hap1 = cohort_start, cohort_start
             diff_hap0, diff_hap1     =  0,  0
+            overlap0,  overlap1      =  0,  0
             prev_start0, prev_start1 = -1, -1
             # parameters for cohort records
             indel_flag    = False
@@ -427,10 +433,11 @@ def variant_seq(
             list_len_hap   = [[],[]]
             for c_var in cohort_vars: # Modify the iterative parameters
                 hap_0, hap_1 = c_var.samples[0]['GT']
-                if c_var.start > prev_start0 + diff_hap0: # checking if there are overlaps
+                if c_var.start > prev_start0 + overlap0: # checking if there are overlaps
                     adj_hap0 += diff_hap0
                     seq_hap0, diff_hap0, len_var= switch_var_seq(c_var, seq_hap0, adj_hap0, hap_0)
                     prev_start0 = c_var.start
+                    overlap0 = len_var - 1 if (diff_hap0 == 0) else diff_hap0
                     list_start_hap[0].append(c_var.start - adj_hap0)
                     list_len_hap[0].append(len_var)
                 else: # overlapping variants are consider conflicts
@@ -439,10 +446,11 @@ def variant_seq(
                     conflict_flag = True            # conflicts in the cohort
                     dict_set_conflict_vars[ref_name].add(prev_start0)
                     dict_set_conflict_vars[ref_name].add(c_var.start)
-                if c_var.start > prev_start1 + diff_hap1:
+                if c_var.start > prev_start1 + overlap1:
                     adj_hap1 += diff_hap1
                     seq_hap1, diff_hap1, len_var = switch_var_seq(c_var, seq_hap1, adj_hap1, hap_1)
                     prev_start1 = c_var.start
+                    overlap1 = len_var - 1 if (diff_hap1 == 0) else diff_hap1
                     list_start_hap[1].append(c_var.start - adj_hap1)
                     list_len_hap[1].append(len_var)
                 else:
