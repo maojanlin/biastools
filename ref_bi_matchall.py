@@ -316,6 +316,16 @@ def compare_sam_to_haps(
                     dict_ref_var_bias[ref_name][var.start]['n_var'][0] += 1
                 elif match_flag_1:
                     dict_ref_var_bias[ref_name][var.start]['n_var'][1] += 1
+                # Cohort matchall comparison
+                if not (match_flag_0 or match_flag_1):
+                    match_flag_0 = hap_inside(read_seq, cohort_seq0, padding)
+                    match_flag_1 = hap_inside(read_seq, cohort_seq1, padding)
+                    if match_flag_0 and match_flag_1:
+                        dict_ref_var_bias[ref_name][var.start]['n_var'][2] += 1
+                    elif match_flag_0:
+                        dict_ref_var_bias[ref_name][var.start]['n_var'][0] += 1
+                    elif match_flag_1:
+                        dict_ref_var_bias[ref_name][var.start]['n_var'][1] += 1
             # 2. Believeing local alignment
             if not (match_flag_0 or match_flag_1):
                 match_flag_0 = match_to_hap(pos_start, var.start, read_seq, seq_hap0, cigar_tuples, padding)
@@ -471,8 +481,8 @@ def variant_seq(
                     print("WARNNING! Duplicate variant at contig:", var.contig, ",pos:", c_var.start)
                 dict_ref_haps[ref_name][(c_var.start)] = (seq_0, seq_1)
             if indel_flag and not conflict_flag: # only generate the cohort if there are indels and no conflict alleles
-                seq_hap0 = seq_hap0[var_chain-padding:padding-var_chain]
-                seq_hap1 = seq_hap1[var_chain-padding:padding-var_chain]
+                seq_hap0 = seq_hap0[var_chain-padding:start0 + list_len_hap[0][idx] + padding]
+                seq_hap1 = seq_hap1[var_chain-padding:start1 + list_len_hap[1][idx] + padding]
                 for c_var in cohort_vars:
                     dict_ref_cohorts[ref_name][(c_var.start)] = (var.start, seq_hap0, seq_hap1)
             idx_vcf += len(cohort_vars) # While Loop Management
