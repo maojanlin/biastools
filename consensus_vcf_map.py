@@ -29,19 +29,12 @@ def variant_seq(
         )-> tuple: # dict_set_conflict_vars, dict_var_haps, dict_cohort
     """
     Output
-        dictionary containing the sequences nearby the variants
-        - keys: ref_name
-        - values: dict {}
-                    - keys: var.start
-                    - values: (seq_hap0, seq_hap1)
-        set containing the conflict variants
-        -values: dict_cohort {}
-                    - keys: var.start
-                    - values: (tuple)
-                        - cohort start # anchor to the referene
-                        - cohort seq 0 # chort seq still got paddings
-                        - cohort seq 1
-        - note: not include the variants within the padding distance to conflict variants
+        - dict_set_conflict_vars: the dictionary marking the overlaping variants
+        - dict_ref_alts:
+            in each contig:
+            - key: var.start
+            - values: [varseq_hap0, varseq_hap1]
+                # not only store the varseq but also indicating the variant length
     """
     dict_ref_alts = {}
     dict_set_conflict_vars = {}
@@ -97,7 +90,7 @@ def check_coordinate(
         dict_set_conflict_vars:  dict
         ) -> None:
     """
-    Comment
+    Make sure the mapping point result in the same sequence as shown in the vcf file
     """
     count_discrepency = 0
     for ref_name, dict_var_seq in dict_ref_alts.items():
@@ -180,8 +173,78 @@ def variant_map(
     return dict_ref_consensus_map
             
 
+def count_haps(
+        dict_ref_alts   :dict,
+        f_sam0          :pysam.AlignmentFile,
+        f_sam1          :pysam.AlignmentFile,
+        dict_ref_consensus_map0 :dict,
+        dict_ref_consensus_map1 :dict,
+        dict_set_conflict_vars  :dict
+        ) -> dict:
+    """
+    Count the number of reads in each golden haplotype sam covering the variants
+    """
+    dict_ref_var_count = {}
+    for ref_name, dict_vars in dict_ref_alts.items():
+        dict_ref_var_count[ref_name] = {}
+        set_conflict = dict_set_conflict_vars[ref_name]
+        for var_start, hap_seqs in dict_vars.items():
+            if var_start in set_conflict:
+                continue
+            hap0_start = dict_ref_consensus_map0[ref_name][var_start]
+            hap0_stop  = hap0_start + len(hap_seqs[0])
+            hap1_start = dict_ref_consensus_map1[ref_name][var_start]
+            hap1_stop  = hap1_start + len(hap_seqs[1])
+            
+            # read numbers overlapping the variants
+            count0 = f_sam0.count(contig=ref_name, start=hap0_start, stop=hap0_stop)
+            count1 = f_sam1.count(contig=ref_name, start=hap1_start, stop=hap1_stop)
+            dict_ref_var_count[ref_name][var_start] = (count0,count1)
+    return dict_ref_var_count
 
+
+def output_report(
+        f_vcf               :pysam.VariantFile,
+        dict_ref_var_count  :dict,
+        fn_output           :str
+        ) -> None:
+    """
+    ourput report
+    """
+    f_all = open(fn_output, 'w')
+    f_gap = open(fn_output + '.gap', 'w')
+    f_SNP = open(fn_output + '.SNP', 'w')
+    f_all.write("CHR\tHET_SITE\tGOLDEN_DISTRUIBUTION\tREF_COUNT\tALT_COUNT\tGAP\n")
+    f_gap.write("CHR\tHET_SITE\tGOLDEN_DISTRUIBUTION\tREF_COUNT\tALT_COUNT\n")
+    f_SNP.write("CHR\tHET_SITE\tGOLDEN_DISTRUIBUTION\tREF_COUNT\tALT_COUNT\n")
+    for var in f_vcf:
+        hap_0, hap_1 = var.samples[0]['GT']
+        if hap_0 != 0 and hap_1 != 0:
+            continue
+        ref_name = var.contig
+        if dict_ref_var_count[ref_name].get(var.start): # Exist legal variant
+            count0, count1 = dict_ref_var_count[ref_name][var.start]
+            len_var = 0
+            if hap_0 == 0:
+                read_distribution = count0/(count0+count1)
+                distring = format(read_distribution, '.8f') + '\t' + str(count0) + '\t' + str(count1)
+                len_var = len(var.alts[hap_1-1])
+            else:
+                read_distribution = count1/(count0+count1)
+                distring = format(read_distribution, '.8f') + '\t' + str(count1) + '\t' + str(count0)
+                len_var = len(var.alts[hap_0-1])
+            f_all.write(ref_name + '\t' + str(var.start+1) + '\t' + distring + '\t')
+            if len(var.ref) != len_var:
+                f_gap.write(ref_name + '\t' + str(var.start+1) + '\t' + distring + '\n')
+                f_all.write('.\n')
+            else:
+                f_SNP.write(ref_name + '\t' + str(var.start+1) + '\t' + distring + '\n')
+                f_all.write('\n')
     
+    f_all.close()
+    f_gap.close()
+    f_SNP.close()
+
 
 
 if __name__ == "__main__":
@@ -193,19 +256,20 @@ if __name__ == "__main__":
     parser.add_argument('-f1', '--hap1_fasta', help='hap1 consensus fasta file')
     parser.add_argument('-s0', '--hap0_sam', help='hap0 sam file')
     parser.add_argument('-s1', '--hap1_sam', help='hap1 sam file')
-    #parser.add_argument('-o', '--out', help='output file')
+    parser.add_argument('-o', '--out', help='output file')
     args = parser.parse_args()
     
     fn_vcf = args.vcf
     fn_chain0 = args.hap0_chain
     fn_chain1 = args.hap1_chain
-    #fn_sam = args.sam
     fn_hap0_fasta = args.hap0_fasta
     fn_hap1_fasta = args.hap1_fasta
-    #fn_output = args.out
+    fn_sam0 = args.hap0_sam
+    fn_sam1 = args.hap1_sam
+    fn_output = args.out
+    padding = 5
     
-    f_vcf   = pysam.VariantFile(fn_vcf)
-    #f_sam   = pysam.AlignmentFile(fn_sam)
+    f_vcf = pysam.VariantFile(fn_vcf)
     f_hap0_fasta = pysam.FastaFile(fn_hap0_fasta)
     f_hap1_fasta = pysam.FastaFile(fn_hap1_fasta)
     print("Start locating variants and the conflicting variants...")
@@ -214,7 +278,6 @@ if __name__ == "__main__":
             f_fasta=f_hap0_fasta
             )
     # extend conflict set
-    padding = 5
     for ref_name in dict_set_conflict_vars.keys():
         for pos in list(dict_set_conflict_vars[ref_name]):
             for extend in range(pos-padding, pos+padding):
@@ -230,7 +293,7 @@ if __name__ == "__main__":
             dict_ref_alts=dict_ref_alts,
             dict_set_conflict_vars=dict_set_conflict_vars
             )
-    
+    # obsolete if you are confident
     print("Checking if the coordinate is correct...")
     check_coordinate(
             dict_ref_alts=dict_ref_alts,
@@ -240,3 +303,20 @@ if __name__ == "__main__":
             dict_ref_consensus_map1=dict_ref_consensus_map1,
             dict_set_conflict_vars=dict_set_conflict_vars
             )
+    print("Checking the simulation sam file covering of the variants")
+    f_sam0 = pysam.AlignmentFile(fn_sam0)
+    f_sam1 = pysam.AlignmentFile(fn_sam1)
+    dict_ref_var_count = count_haps(
+            dict_ref_alts=dict_ref_alts,
+            f_sam0=f_sam0,
+            f_sam1=f_sam1,
+            dict_ref_consensus_map0=dict_ref_consensus_map0,
+            dict_ref_consensus_map1=dict_ref_consensus_map1,
+            dict_set_conflict_vars=dict_set_conflict_vars
+            )
+    f_vcf = pysam.VariantFile(fn_vcf)
+    print("Start output report...")
+    output_report(
+            f_vcf=f_vcf,
+            dict_ref_var_count=dict_ref_var_count,
+            fn_output=fn_output)
