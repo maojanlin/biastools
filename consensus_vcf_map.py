@@ -214,9 +214,9 @@ def output_report(
     f_all = open(fn_output, 'w')
     f_gap = open(fn_output + '.gap', 'w')
     f_SNP = open(fn_output + '.SNP', 'w')
-    f_all.write("CHR\tHET_SITE\tGOLDEN_DISTRUIBUTION\tREF_COUNT\tALT_COUNT\tGAP\n")
-    f_gap.write("CHR\tHET_SITE\tGOLDEN_DISTRUIBUTION\tREF_COUNT\tALT_COUNT\n")
-    f_SNP.write("CHR\tHET_SITE\tGOLDEN_DISTRUIBUTION\tREF_COUNT\tALT_COUNT\n")
+    f_all.write("CHR\tHET_SITE\tGOLDEN_DISTRIBUTION\tREF_COUNT\tALT_COUNT\tGAP\n")
+    f_gap.write("CHR\tHET_SITE\tGOLDEN_DISTRIBUTION\tREF_COUNT\tALT_COUNT\n")
+    f_SNP.write("CHR\tHET_SITE\tGOLDEN_DISTRIBUTION\tREF_COUNT\tALT_COUNT\n")
     for var in f_vcf:
         hap_0, hap_1 = var.samples[0]['GT']
         if hap_0 != 0 and hap_1 != 0:
