@@ -246,7 +246,7 @@ def locate_by_cigar(
             else:
                 read_curser += runs
         elif code == 1: # I
-            ref_curser  += 1
+            #ref_curser  += 1
             if ref_curser > target_pos:
                 return read_curser
             else:
@@ -255,8 +255,8 @@ def locate_by_cigar(
             ref_curser += runs
             if ref_curser > target_pos:
                 return read_curser
-            else:
-                read_curser += 1
+            #else:
+            #    read_curser += 1
         elif code == 4 or code == 5: # S or H, pysam already parsed
             pass
         else:
@@ -308,6 +308,7 @@ def compare_sam_to_haps(
     dict_ref_haps   :dict,
     dict_ref_gaps   :dict,
     dict_ref_cohorts:dict,
+    dict_set_conflict_vars: dict, #For Debug only
     padding         :int=5
     ) -> dict:
     """
@@ -323,12 +324,13 @@ def compare_sam_to_haps(
             dict_ref_var_bias[ref_name][start_pos] = {'n_read':[0,0], 'n_var':[0,0,0,0], 'map_q':[0,0]}
     
     # parameters for pipeline design
-    count_others  = 0
-    count_both    = 0
-    count_error   = 0
-    count_correct = 0
+    count_others  = [0,0]
+    count_both    = [0,0]
+    count_error   = [0,0]
+    count_correct = [0,0]
 
     # scanning all the read alignments
+    dict_errors = {}
     for segment in f_sam:
         flag = segment.flag
         if (flag & 4): # bitwise AND 4, segment unmapped
@@ -346,6 +348,8 @@ def compare_sam_to_haps(
         related_vars = list(f_vcf.fetch(ref_name, pos_start, pos_end)) # list of pysam.variant
         #fetching the sequence in the read_seq regarding to the variant
         for var in related_vars:
+            if var.start in dict_set_conflict_vars[ref_name]: # neglecting the conflict variant sites
+                continue
             seq_hap0, seq_hap1 = dict_ref_haps[ref_name][var.start]
 
             match_flag_0 = False
@@ -367,12 +371,15 @@ def compare_sam_to_haps(
                             match_flag_1 = False
                         elif diff_read != diff_hap0 and diff_read == diff_hap1:
                             match_flag_0 = False
-                # Cohort matchall comparison
-                if not (match_flag_0 or match_flag_1):
+                # 2. Cohort matchall comparison
+                """
+                if match_flag_0 == match_flag_1:
                     match_flag_0 = hap_inside(read_seq, cohort_seq0, padding)
                     match_flag_1 = hap_inside(read_seq, cohort_seq1, padding)
-            # 2. Believeing local alignment
-            if not (match_flag_0 or match_flag_1):
+                    """
+            # 3. Believeing local alignment
+            flag_4 = False
+            if match_flag_0 == match_flag_1: # both or others
                 match_flag_0 = match_to_hap(pos_start, var.start, read_seq, seq_hap0, cigar_tuples, padding)
                 match_flag_1 = match_to_hap(pos_start, var.start, read_seq, seq_hap1, cigar_tuples, padding)
                 if match_flag_0 and match_flag_1:
@@ -387,11 +394,14 @@ def compare_sam_to_haps(
                             match_flag_1 = False
                         elif diff_read != diff_hap0 and diff_read == diff_hap1:
                             match_flag_0 = False
-            # 3. Matchall comparison
-            if not (match_flag_0 or match_flag_1):
+            # 4. Matchall comparison
+            
+            if match_flag_0 == match_flag_1: # both or others
+                flag_4 = True
                 match_flag_0 = hap_inside(read_seq, seq_hap0, padding)
                 match_flag_1 = hap_inside(read_seq, seq_hap1, padding)
-            # 4. Assign Values
+                
+            # 5. Assign Values
             if match_flag_0 and match_flag_1:
                 dict_ref_var_bias[ref_name][var.start]['n_var'][2] += 1
             elif match_flag_0:
@@ -412,17 +422,49 @@ def compare_sam_to_haps(
                 print("WARNING, there is a read without haplotype information!!")
 
             # TODO DEBUG PURPOSE!
-            if True: #not (len(var.ref) == 1 and len(var.alts[0]) == 1):
-                if match_flag_0 and match_flag_1:
-                    count_both += 1
-                elif match_flag_0 == False and match_flag_1 == False:
-                    count_others += 1
-                elif ('hapA' == rg_tag) and match_flag_0:
-                    count_correct += 1
-                elif ('hapB' == rg_tag) and match_flag_1:
-                    count_correct += 1
+            if seq_hap0 != seq_hap1: # only count heterozygous site
+                if (len(var.ref) == 1 and max([len(seq) for seq in var.alts]) == 1):
+                    gap_flag = 0
                 else:
-                    count_error += 1
+                    gap_flag = 1
+                if match_flag_0 and match_flag_1:
+                    count_both[gap_flag] += 1
+                elif match_flag_0 == False and match_flag_1 == False:
+                    count_others[gap_flag] += 1
+                elif ('hapA' == rg_tag) and match_flag_0:
+                    if flag_4 and gap_flag == 0:
+                        if dict_errors.get(var.start):
+                            dict_errors[var.start].append((int('hapA' == rg_tag), seq_name))
+                        else:
+                            dict_errors[var.start] = [(int('hapA' == rg_tag), var.start, seq_name)]
+                    #    print(int('hapA' == rg_tag), var.start, seq_name)
+                    count_correct[gap_flag] += 1
+                elif ('hapB' == rg_tag) and match_flag_1:
+                    if flag_4 and gap_flag == 0:
+                        if dict_errors.get(var.start):
+                            dict_errors[var.start].append((int('hapA' == rg_tag), seq_name))
+                        else:
+                            dict_errors[var.start] = [(int('hapA' == rg_tag), var.start, seq_name)]
+                    #    print(int('hapA' == rg_tag), var.start, seq_name)
+                    count_correct[gap_flag] += 1
+                else:
+                    """
+                    if gap_flag == 0:
+                        if dict_errors.get(var.start):
+                            dict_errors[var.start].append((int('hapA' == rg_tag), seq_name))
+                        else:
+                            dict_errors[var.start] = [(int('hapA' == rg_tag), var.start, seq_name)]
+                        #print(int('hapA' == rg_tag), var.start, seq_name)"""
+                    count_error[gap_flag] += 1
+    accumulate_error = list(dict_errors.items())
+    print(len(accumulate_error))
+    sorted_errors = sorted(accumulate_error, key=lambda x: len(x[1]), reverse=True)
+    for idx in range(100):
+        print("============", idx, "var.start", sorted_errors[idx][0], "=============")
+        if len(sorted_errors[idx][1]) == 1:
+            break
+        for ele in sorted_errors[idx][1]:
+            print(ele)
     print("count correct:", count_correct)
     print("count error:", count_error)
     print("count both:", count_both)
@@ -572,9 +614,6 @@ def variant_seq(
                 dict_ref_gaps[ref_name][var.start] = (diff_hap0, diff_hap1)
             idx_vcf += 1 # While Loop Management
         
-        ## FOR DEBUG!!!!!
-        #if var.start > 7948695:
-        #    break
     return dict_set_conflict_vars, dict_ref_haps, dict_ref_cohorts, dict_ref_gaps
 
 
@@ -596,8 +635,10 @@ if __name__ == "__main__":
     f_vcf   = pysam.VariantFile(fn_vcf)
     f_sam   = pysam.AlignmentFile(fn_sam)
     f_fasta = pysam.FastaFile(fn_fasta)
-    var_chain = 15
+    #var_chain = 15
     padding = 5
+    var_chain = 25
+    #padding   = 10
     print("Start building the variant maps...")
     dict_set_conflict_vars, dict_ref_haps, dict_ref_cohorts, dict_ref_gaps = variant_seq(
             f_vcf=f_vcf,
@@ -608,7 +649,7 @@ if __name__ == "__main__":
     # extend conflict set
     for ref_name in dict_set_conflict_vars.keys():
         for pos in list(dict_set_conflict_vars[ref_name]):
-            for extend in range(pos-padding, pos+padding):
+            for extend in range(pos-var_chain, pos+var_chain):
                 dict_set_conflict_vars[ref_name].add(extend)
     
     print("Start comparing reads to the variant map...")
@@ -618,6 +659,7 @@ if __name__ == "__main__":
             dict_ref_haps=dict_ref_haps,
             dict_ref_gaps=dict_ref_gaps,
             dict_ref_cohorts=dict_ref_cohorts,
+            dict_set_conflict_vars=dict_set_conflict_vars,
             padding=padding)
     
     f_vcf   = pysam.VariantFile(fn_vcf)
