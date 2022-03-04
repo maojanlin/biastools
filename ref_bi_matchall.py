@@ -320,6 +320,7 @@ def locate_by_cigar(
 def match_to_hap(
         seq_name    :str, # for debug
         read_start  :int,
+        read_end    :int,
         var_start   :int,
         seq_read    :str,
         seq_hap     :str,
@@ -335,6 +336,8 @@ def match_to_hap(
     3. compare the read to haplotype sequences
     """
     if read_start > var_start: # Not cover
+        return -1
+    elif read_end < var_start: # Not cover
         return -1
     
     # locating the variant site on the read
@@ -436,11 +439,11 @@ def compare_sam_to_haps(
             # 1. Cohort alignment
             if dict_ref_cohorts[ref_name].get(var.start): # Anchor Left
                 cohort_start, cohort_stop, cohort_seq0, cohort_seq1, lpad_0, lpad_1, rpad_0, rpad_1 = dict_ref_cohorts[ref_name][var.start]
-                match_flag_0 = match_to_hap(seq_name, pos_start, cohort_start, read_seq, cohort_seq0, cigar_tuples, padding, lpad_0, rpad_0, True)
-                match_flag_1 = match_to_hap(seq_name, pos_start, cohort_start, read_seq, cohort_seq1, cigar_tuples, padding, lpad_1, rpad_1, True)
+                match_flag_0 = match_to_hap(seq_name, pos_start, pos_end, cohort_start, read_seq, cohort_seq0, cigar_tuples, padding, lpad_0+1, rpad_0+1, True)
+                match_flag_1 = match_to_hap(seq_name, pos_start, pos_end, cohort_start, read_seq, cohort_seq1, cigar_tuples, padding, lpad_1+1, rpad_1+1, True)
                 if not ((match_flag_0 == 1 and match_flag_1 != 1) or (match_flag_1 == 1 and  match_flag_0 !=1)): # Anchor Right
-                    match_flag_0 = match_to_hap(seq_name, pos_start, cohort_stop, read_seq, cohort_seq0, cigar_tuples, padding, lpad_0, rpad_0, False)
-                    match_flag_1 = match_to_hap(seq_name, pos_start, cohort_stop, read_seq, cohort_seq1, cigar_tuples, padding, lpad_1, rpad_1, False)
+                    match_flag_0 = match_to_hap(seq_name, pos_start, pos_end, cohort_stop, read_seq, cohort_seq0, cigar_tuples, padding, lpad_0+1, rpad_0+1, False)
+                    match_flag_1 = match_to_hap(seq_name, pos_start, pos_end, cohort_stop, read_seq, cohort_seq1, cigar_tuples, padding, lpad_1+1, rpad_1+1, False)
                 if match_flag_0 == 1 and match_flag_1 == 1:
                     if dict_ref_gaps[ref_name].get(var.start):
                         diff_hap0, diff_hap1 = dict_ref_gaps[ref_name][var.start]
@@ -462,22 +465,22 @@ def compare_sam_to_haps(
             # 2. Local alignment
             flag_4 = False
             if match_flag_0 == match_flag_1: # both or others
-                match_flag_0 = match_to_hap(seq_name, pos_start, var.start, read_seq, seq_hap0, cigar_tuples, padding, padding, padding, True)
-                match_flag_1 = match_to_hap(seq_name, pos_start, var.start, read_seq, seq_hap1, cigar_tuples, padding, padding, padding, True)
+                match_flag_0 = match_to_hap(seq_name, pos_start, pos_end, var.start, read_seq, seq_hap0, cigar_tuples, padding, padding+1, padding+1, True)
+                match_flag_1 = match_to_hap(seq_name, pos_start, pos_end, var.start, read_seq, seq_hap1, cigar_tuples, padding, padding+1, padding+1, True)
                 if not ((match_flag_0 == 1 and match_flag_1 != 1) or (match_flag_1 == 1 and  match_flag_0 !=1)): # Anchor Right
-                    match_flag_0 = match_to_hap(seq_name, pos_start, var.stop, read_seq, seq_hap0, cigar_tuples, padding, padding, padding, False)
-                    match_flag_1 = match_to_hap(seq_name, pos_start, var.stop, read_seq, seq_hap1, cigar_tuples, padding, padding, padding, False)
-                    if dict_ref_gaps[ref_name].get(var.start):
-                        diff_hap0, diff_hap1 = dict_ref_gaps[ref_name][var.start]
-                        diff_read = return_locate_cigar(
-                                read_start=pos_start, 
-                                target_pos=var.start, 
-                                cigar_tuples=cigar_tuples
-                                )
-                        if diff_read == diff_hap0 and diff_read != diff_hap1:
-                            match_flag_1 = 0
-                        elif diff_read != diff_hap0 and diff_read == diff_hap1:
-                            match_flag_0 = 0
+                    match_flag_0 = match_to_hap(seq_name, pos_start, pos_end, var.stop, read_seq, seq_hap0, cigar_tuples, padding, padding+1, padding+1, False)
+                    match_flag_1 = match_to_hap(seq_name, pos_start, pos_end, var.stop, read_seq, seq_hap1, cigar_tuples, padding, padding+1, padding+1, False)
+                if dict_ref_gaps[ref_name].get(var.start):
+                    diff_hap0, diff_hap1 = dict_ref_gaps[ref_name][var.start]
+                    diff_read = return_locate_cigar(
+                            read_start=pos_start, 
+                            target_pos=var.start, 
+                            cigar_tuples=cigar_tuples
+                            )
+                    if diff_read == diff_hap0 and diff_read != diff_hap1:
+                        match_flag_1 = 0
+                    elif diff_read != diff_hap0 and diff_read == diff_hap1:
+                        match_flag_0 = 0
             # X. Obsolete Local Read search
             """
             if match_flag_0 == match_flag_1: # both or others
