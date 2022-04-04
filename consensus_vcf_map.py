@@ -55,7 +55,7 @@ def variant_seq(
         diff_hap0, var_seq0 = len_var_seq(var, hap_0)
         diff_hap1, var_seq1 = len_var_seq(var, hap_1)
         if var.start > prev_start0 + overlap0 and var.start > prev_start1 + overlap1: # checking if there are overlaps
-            dict_ref_alts[ref_name][var.start] = [var_seq0, var_seq1]
+            dict_ref_alts[ref_name][var.start] = [var_seq0, var_seq1, hap_0, hap_1]
             # hap0
             prev_start0 = var.start
             overlap0 = len(var_seq0) - 1 if (diff_hap0 == 0) else diff_hap0
@@ -105,10 +105,10 @@ def check_coordinate(
             pos_map1 = dict_ref_consensus_map1[ref_name][var_start]
             fetch_hap_0 = f_hap0_fasta.fetch(reference=ref_name, start=pos_map0, end=pos_map0 + len(seq_hap0))
             fetch_hap_1 = f_hap1_fasta.fetch(reference=ref_name, start=pos_map1, end=pos_map1 + len(seq_hap1))
-            if seq_hap0 != fetch_hap_0:
+            if seq_hap0.upper() != fetch_hap_0.upper():
                 print("Discrepency at", str(var_start), str(pos_map0), "haplotype 0! Expect", seq_hap0, ", get", fetch_hap_0, "...")
                 count_discrepency += 1
-            if seq_hap1 != fetch_hap_1:
+            if seq_hap1.upper() != fetch_hap_1.upper():
                 print("Discrepency at", str(var_start), str(pos_map1), "haplotype 1! Expect", seq_hap1, ", get", fetch_hap_1, "...")
                 count_discrepency += 1
     print("Total Discrepency:", count_discrepency)
@@ -191,6 +191,8 @@ def count_haps(
         for var_start, hap_seqs in dict_vars.items():
             if var_start in set_conflict:
                 continue
+            if hap_seqs[2] == hap_seqs[3]: # if the var is homozygous
+                continue
             hap0_start = dict_ref_consensus_map0[ref_name][var_start]
             hap0_stop  = hap0_start + len(hap_seqs[0])
             hap1_start = dict_ref_consensus_map1[ref_name][var_start]
@@ -267,7 +269,7 @@ if __name__ == "__main__":
     fn_sam0 = args.hap0_sam
     fn_sam1 = args.hap1_sam
     fn_output = args.out
-    padding = 5
+    var_chain = 25
     
     f_vcf = pysam.VariantFile(fn_vcf)
     f_hap0_fasta = pysam.FastaFile(fn_hap0_fasta)
@@ -280,7 +282,7 @@ if __name__ == "__main__":
     # extend conflict set
     for ref_name in dict_set_conflict_vars.keys():
         for pos in list(dict_set_conflict_vars[ref_name]):
-            for extend in range(pos-padding, pos+padding):
+            for extend in range(pos-var_chain, pos+var_chain):
                 dict_set_conflict_vars[ref_name].add(extend)
     print("Start building the mapping consensus coordinate...")
     dict_ref_consensus_map0 = variant_map(
