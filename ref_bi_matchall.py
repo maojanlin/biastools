@@ -107,19 +107,21 @@ functions above are obsolete
 
 def chi_square_test(
         var_start:      int,
-        list_start_end: list
+        list_pos_start: list
         ) -> float:
     """
     transform the list pos_start into distribution
     """
-    list_pos_start, list_pos_end = list_start_end
+    #list_pos_start, list_pos_end = list_start_end
     if len(list_pos_start) < 2:
-        return None
+        return 0 # None, cannot test
     print(var_start, list_pos_start)
-    list_count = np.zeros(10)
+    bucket_num = 5
+    bucket_len = int(100/ bucket_num)
+    list_count = np.zeros(bucket_num)
     for ele in list_pos_start:
-        input_idx = int((var_start - ele)/10)
-        if input_idx >= 10:
+        input_idx = int((var_start - ele)/bucket_len)
+        if input_idx >= bucket_num:
             print("skip")
             continue
         list_count[input_idx] += 1
@@ -167,9 +169,9 @@ def output_report(
     f_all = open(fn_output, 'w')
     f_gap = open(fn_output + '.gap', 'w')
     f_SNP = open(fn_output + '.SNP', 'w')
-    f_all.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tBOTH_COUNT\tNEITHER_COUNT\tNUM_READS\tSUM_MAPQ\tREAD_DISTRIBUTION\tEVEN_P_VALUE\tGAP\n")
-    f_gap.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tBOTH_COUNT\tNEITHER_COUNT\tNUM_READS\tSUM_MAPQ\tREAD_DISTRIBUTION\tEVEN_P_VALUE\n")
-    f_SNP.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tBOTH_COUNT\tNEITHER_COUNT\tNUM_READS\tSUM_MAPQ\tREAD_DISTRIBUTION\tEVEN_P_VALUE\n")
+    f_all.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tBOTH_COUNT\tNEITHER_COUNT\tNUM_READS\tSUM_MAPQ\tEVEN_P_VALUE\tREAD_DISTRIBUTION\tGAP\n")
+    f_gap.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tBOTH_COUNT\tNEITHER_COUNT\tNUM_READS\tSUM_MAPQ\tEVEN_P_VALUE\tREAD_DISTRIBUTION\n")
+    f_SNP.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tBOTH_COUNT\tNEITHER_COUNT\tNUM_READS\tSUM_MAPQ\tEVEN_P_VALUE\tREAD_DISTRIBUTION\n")
     for var in f_vcf:
         ref_name = var.contig
         hap = var.samples[0]['GT']
@@ -187,7 +189,9 @@ def output_report(
         n_var  = dict_ref_bias[ref_name][var.start]['n_var']
         map_q  = dict_ref_bias[ref_name][var.start]['map_q']
         #p_value = interval_variance(var.start, dict_ref_bias[ref_name][var.start]['distribute'])
-        p_value = chi_square_test(var.start, dict_ref_bias[ref_name][var.start]['distribute'])
+        p_value = chi_square_test(var.start, dict_ref_bias[ref_name][var.start]['distribute'][idx_alt])
+        if p_value: # p_value is not None
+            p_value = min(p_value, chi_square_test(var.start, dict_ref_bias[ref_name][var.start]['distribute'][idx_ref]))
         output_string = (ref_name + '\t' + str(var.start+1) + '\t')
         # n_var[0,1,2,3] = hap0, hap1, both, others
         if sum(n_var[:3]) == 0:
@@ -196,14 +200,14 @@ def output_report(
             #output_string += (format((n_var[idx_ref]+0.5*n_var[2]) / float(sum(n_var[:3])), '.8f'))
             output_string += (format((n_var[idx_ref]) / float(sum(n_var[:2])), '.8f'))
         output_string += ("\t" + str(n_var[idx_ref]) + "\t" + str(n_var[idx_alt]) + "\t" + str(n_var[2]) +"\t" + str(n_var[3]) + "\t" + str(sum(n_read)) + "\t" + str(sum(map_q)) + "\t")
-        if sum(n_read) == 0:
-            output_string += ("N/A") + '\t'
-        else:
-            output_string += (format(n_read[idx_ref] / float(sum(n_read)), '.8f')) + '\t'
         if p_value == None:
+            output_string += ("0") + '\t'
+        else:
+            output_string += (format(p_value, '.8f')) + '\t'
+        if sum(n_read) == 0:
             output_string += ("N/A")
         else:
-            output_string += (format(p_value, '.8f'))
+            output_string += (format(n_read[idx_ref] / float(sum(n_read)), '.8f'))
 
         if len(var.ref) ==  len(var.alts[ hap[idx_alt] - 1]): # length of ref is equal to length of 
             f_all.write(output_string + '\t' + '\n')
@@ -368,7 +372,7 @@ def match_to_hap(
         min_match = l_min_req # minimum len to cover variant
     if r_bound - l_bound < min_match:
         return -1 # Not cover
-    if seq_read[l_bound:r_bound] == seq_hap:
+    if seq_read[l_bound:r_bound].upper() == seq_hap.upper():
         return 1 # Match
     else:
         return 0 # Not match
@@ -393,7 +397,7 @@ def compare_sam_to_haps(
         dict_ref_var_bias[ref_name] = {}
         for start_pos in dict_ref_haps[ref_name]:
             # n_var has hap0, hap1, both, and others
-            dict_ref_var_bias[ref_name][start_pos] = {'n_read':[0,0], 'n_var':[0,0,0,0], 'map_q':[0,0], 'distribute':[[],[]]}
+            dict_ref_var_bias[ref_name][start_pos] = {'n_read':[0,0], 'n_var':[0,0,0,0], 'map_q':[0,0], 'distribute':[[],[],[],[]]}
     
     # parameters for pipeline design
     count_others  = [0,0]
@@ -495,8 +499,14 @@ def compare_sam_to_haps(
                 dict_ref_var_bias[ref_name][var.start]['n_var'][2] += 1
             elif match_flag_0 == 1:
                 dict_ref_var_bias[ref_name][var.start]['n_var'][0] += 1
+                # record the starting position of each read cover the variant
+                dict_ref_var_bias[ref_name][var.start]['distribute'][0].append(pos_start)
+                dict_ref_var_bias[ref_name][var.start]['distribute'][2].append(pos_end)
             elif match_flag_1 == 1:
                 dict_ref_var_bias[ref_name][var.start]['n_var'][1] += 1
+                # record the starting position of each read cover the variant
+                dict_ref_var_bias[ref_name][var.start]['distribute'][1].append(pos_start)
+                dict_ref_var_bias[ref_name][var.start]['distribute'][3].append(pos_end)
             else:
                 dict_ref_var_bias[ref_name][var.start]['n_var'][3] += 1
             
@@ -509,9 +519,6 @@ def compare_sam_to_haps(
                 dict_ref_var_bias[ref_name][var.start]['map_q'][1]  += mapq
             else:
                 print("WARNING, there is a read without haplotype information!!")
-            # record the starting position of each read cover the variant
-            dict_ref_var_bias[ref_name][var.start]['distribute'][0].append(pos_start)
-            dict_ref_var_bias[ref_name][var.start]['distribute'][1].append(pos_end)
 
             # TODO DEBUG PURPOSE!
             if seq_hap0 != seq_hap1: # only count heterozygous site
