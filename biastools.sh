@@ -57,5 +57,5 @@ echo "[BIASTOOLS] Reference bias analysis"
 #python3 ref_bi.py -s bt2.sorted.het.bam -v chr21_het.vcf.gz -f GRCh38_chr21.fa -o bt.bias
 #python3 ref_bi.py -s octopus.bt2.sorted.het.bam -v chr21_het.vcf.gz -f GRCh38_chr21.fa -o octopus.bt.bias
 python3 ref_bi_matchall.py -s bt2.chr21.sorted.het.bam -v chr21_het.vcf.gz -f GRCh38_chr21.fa -o matchall.chr21.bias
-python3 merge_report.py -b matchall.chr21.bias.SNP -g golden_distribution_chr21.rpt.SNP -o merge.chr22.bias.SNP
-python3 merge_report.py -b matchall.chr21.bias.gap -g golden_distribution_chr21.rpt.gap -o merge.chr22.bias.gap
+python3 merge_report.py -b matchall.chr21.bias.SNP -g golden_distribution.rpt.SNP -o merge.chr21.bias.SNP
+python3 merge_report.py -b matchall.chr21.bias.gap -g golden_distribution.rpt.gap -o merge.chr21.bias.gap
