@@ -21,9 +21,11 @@ samtools index hapB.sorted.bam
 echo "[BIASTOOLS] Align sequences to the original reference"
 mkdir ./index/
 mkdir ./index/GRCh38_chr21/
-bowtie2-build GRCh38_chr21.fa ./index/GRCh38_chr21/chr21_index
-bowtie2 -p 32 -x ./index/GRCh38_chr21/chr21_index --rg-id hapA --rg SM:NA12878 -1 hapA_1.fq -2 hapA_2.fq -S hapA.bt2.sam
-bowtie2 -p 32 -x ./index/GRCh38_chr21/chr21_index --rg-id hapB --rg SM:NA12878 -1 hapB_1.fq -2 hapB_2.fq -S hapB.bt2.sam
+#bowtie2-build GRCh38_chr21.fa ./index/GRCh38_chr21/chr21_index
+#bowtie2 -p 32 -x ./index/GRCh38_chr21/chr21_index --rg-id hapA --rg SM:NA12878 -1 hapA_1.fq -2 hapA_2.fq -S hapA.bt2.sam
+#bowtie2 -p 32 -x ./index/GRCh38_chr21/chr21_index --rg-id hapB --rg SM:NA12878 -1 hapB_1.fq -2 hapB_2.fq -S hapB.bt2.sam
+bowtie2 -p 32 -x ~/data_blangme2/fasta/grch38/bt2/GCA_000001405.15_GRCh38_no_alt_analysis_set --rg-id hapA --rg SM:NA12878 -1 hapA_1.fq -2 hapA_2.fq -S hapA.bt2.sam
+bowtie2 -p 32 -x ~/data_blangme2/fasta/grch38/bt2/GCA_000001405.15_GRCh38_no_alt_analysis_set --rg-id hapB --rg SM:NA12878 -1 hapB_1.fq -2 hapB_2.fq -S hapB.bt2.sam
 
 samtools sort -@ 16 hapA.bt2.sam -o hapA.bt2.sorted.bam
 samtools sort -@ 16 hapB.bt2.sam -o hapB.bt2.sorted.bam
@@ -39,7 +41,7 @@ bedtools intersect -a bt2.sorted.bam -b chr21_het.vcf.gz | samtools view -bo bt2
 samtools index bt2.sorted.het.bam
 
 echo "[BIASTOOLS] Generate golden distribution report"
-python3 ../consensus_vcf_map.py -v chr21_het.vcf.gz \
+python3 consensus_vcf_map.py -v chr21_het.vcf.gz \
     -c0 ref2hapA.chain \
     -c1 ref2hapB.chain \
     -f0 GRCh38_chr21.hapA.fa \
@@ -56,6 +58,6 @@ python3 ../consensus_vcf_map.py -v chr21_het.vcf.gz \
 echo "[BIASTOOLS] Reference bias analysis"
 #python3 ref_bi.py -s bt2.sorted.het.bam -v chr21_het.vcf.gz -f GRCh38_chr21.fa -o bt.bias
 #python3 ref_bi.py -s octopus.bt2.sorted.het.bam -v chr21_het.vcf.gz -f GRCh38_chr21.fa -o octopus.bt.bias
-python3 ref_bi_matchall.py -s bt2.chr21.sorted.het.bam -v chr21_het.vcf.gz -f GRCh38_chr21.fa -o matchall.chr21.bias
+python3 ref_bi_matchall.py -s bt2.sorted.het.bam -v chr21_het.vcf.gz -f GRCh38_chr21.fa -o matchall.chr21.bias
 python3 merge_report.py -b matchall.chr21.bias.SNP -g golden_distribution.rpt.SNP -o merge.chr21.bias.SNP
 python3 merge_report.py -b matchall.chr21.bias.gap -g golden_distribution.rpt.gap -o merge.chr21.bias.gap

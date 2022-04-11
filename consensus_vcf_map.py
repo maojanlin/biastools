@@ -179,7 +179,8 @@ def count_haps(
         f_sam1          :pysam.AlignmentFile,
         dict_ref_consensus_map0 :dict,
         dict_ref_consensus_map1 :dict,
-        dict_set_conflict_vars  :dict
+        dict_set_conflict_vars  :dict,
+        debug           :bool=False
         ) -> dict:
     """
     Count the number of reads in each golden haplotype sam covering the variants
@@ -201,6 +202,15 @@ def count_haps(
             # read numbers overlapping the variants
             count0 = f_sam0.count(contig=ref_name, start=hap0_start, stop=hap0_stop)
             count1 = f_sam1.count(contig=ref_name, start=hap1_start, stop=hap1_stop)
+            if debug:
+                print(ref_name, var_start, ':\n\thapA (' + str(count0) + "): ", end="")
+                for read in f_sam0.fetch(contig=ref_name, start=hap0_start, stop=hap0_stop):
+                    print(read.query_name, end=", ")
+                print("\n\thapB (" + str(count1) + "): ", end="")
+                for read in f_sam1.fetch(contig=ref_name, start=hap1_start, stop=hap1_stop):
+                    print(read.query_name, end=", ")
+                print("\n", end="")
+                
             dict_ref_var_count[ref_name][var_start] = (count0,count1)
     return dict_ref_var_count
 
@@ -314,7 +324,8 @@ if __name__ == "__main__":
             f_sam1=f_sam1,
             dict_ref_consensus_map0=dict_ref_consensus_map0,
             dict_ref_consensus_map1=dict_ref_consensus_map1,
-            dict_set_conflict_vars=dict_set_conflict_vars
+            dict_set_conflict_vars=dict_set_conflict_vars,
+            debug=True
             )
     f_vcf = pysam.VariantFile(fn_vcf)
     print("Start output report...")
