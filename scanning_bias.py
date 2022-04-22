@@ -46,38 +46,82 @@ def scanning_bias(
                 elif depth*3 <= max_alt_depth*2: # slightly not diploid
                     dep_dip_den[1] = 0.5
                 else: # non diploid
-                    dep_dip_den[1] = 0.1
+                    dep_dip_den[1] = 0.01
         if dep_dip_den[1] > 0:
             list_var_sites.append([ref_name, var.start, total_depth, alt_depth, list_alleles, dep_dip_den])
 
     # Analyze the density of the variants
     density_map = np.zeros(len(list_var_sites))
+    density_dip = np.zeros(len(list_var_sites))
     for idx, var_info in enumerate(list_var_sites):
         idy = idx + 1
         pos = var_info[1]
         while idy < len(list_var_sites):
             pos_check = list_var_sites[idy][1]
             if pos_check <= pos + 200:
+                # how many variants are nearby
                 density_map[idx] += 1
                 density_map[idy] += 1
+                # how many non-diploid variants are nearby
+                density_dip[idx] += list_var_sites[idy][-1][1]
+                density_dip[idy] += var_info[-1][1]
             else:
                 break
             idy += 1
-        if density_map[idx] > 10:
-            list_var_sites[-1][2] = 1
-        elif density_map[idx] > 3:
-            list_var_sites[-1][2] = 0.5
 
-    # print the result
+    # calculate bias score`/
+    list_bias_vars = []
     for idx, var_info in enumerate(list_var_sites):
-        # calculate score`/
-        dep_dip_den = var_info[-1]
-        if sum(dep_dip_den) >= 1.5:
-            print('*', density_map[idx], var_info)
+        # Depth score
+        score = [var_info[-1][0],0,0]
+        # Density score
+        if density_map[idx] > 10: 
+            score[2] = 1
+        elif density_map[idx] > 3:
+            score[2] = 0.5
+        # Diploid score
+        if density_dip[idx]*2 > density_map[idx]:
+            score[1] = 1
+        elif density_dip[idx]*10 > density_map[idx]*3:
+            score[1] =0.5
+        # final score
+        if sum(score) >= 2:
+            list_bias_vars.append(var_info[:2])
+            print('*', round(density_dip[idx],1), density_map[idx], var_info)
         else:
-            print(' ', density_map[idx], var_info)
+            print(' ', round(density_dip[idx],1), density_map[idx], var_info)
+    #print("number of sites being print:", len(list_var_sites))
+    list_segment = []
+    list_suspicious = []
+    start_pos = list_bias_vars[0][1]
+    end_pos = list_bias_vars[0][1]
+    for site in list_bias_vars[1:]:
+        site_pos = site[1]
+        if site_pos - end_pos < 3000: # connect segment
+            end_pos = site_pos
+        else: # next segment
+            if end_pos - start_pos > 10000:
+                list_segment.append((site[0], start_pos, end_pos))
+            else:
+                list_suspicious.append((site[0], start_pos, end_pos))
+            start_pos = site_pos
+            end_pos   = site_pos
+    print(len(list_suspicious))
+    print(len(list_segment))
+    if (len(list_segment) == 0 or list_segment[-1][1] != end_pos) and (len(list_suspicious) == 0 or list_suspicious[-1][1] != end_pos):
+        if end_pos - start_pos > 10000:
+            list_segment.append((site[0], start_pos, end_pos))
+        else:
+            list_suspicious.append((site[0], start_pos, end_pos))
+    print("The bias segments:")
+    for segment in list_segment:
+        print(segment[0], str(segment[1]) + '-' + str(segment[2]))
+    print("\nThe suspicious position:")
+    for segment in list_suspicious:
+        print(segment[0], str(segment[1]) + '-' + str(segment[2]))
 
-    print("number of sites being print:", len(list_var_sites))
+
+
     return None
 
 
