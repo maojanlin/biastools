@@ -1,7 +1,7 @@
 Work_dir="scanning_bias"
 Range="chr7:151832010-152133088"
 
-mkdir ${Work_dir}
+mkdir -p ${Work_dir}
 
 Ref_fasta="/home/mlin77/data_blangme2/fasta/grch38/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna"
 Bam_file_1="/scratch16/blangme2/naechyun/leviosam_exp/hg002_30x/hg19-kmt2c.bam"
@@ -11,7 +11,7 @@ prefix="KMT2C_hg19"
 
 echo "[BIASTOOLS] Format Variant"
 bcftools mpileup \
-  -A \
+  --count-orphans \
   --annotate FORMAT/AD,FORMAT/DP\
   -f "${Ref_fasta}" \
   --min-BQ 0 \
