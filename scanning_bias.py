@@ -1,6 +1,49 @@
 import argparse
 import pysam
+
 import numpy as np
+import gzip
+
+
+def output_wig(
+        fn_output   :str,
+        wig_info    :tuple,
+        window_size
+        ) -> None:
+    """
+    output the wig format for read_depth, var_density, and dip_density
+    this whole process take times
+    """
+    ref_name, region_begin, array_read_depth, array_var_density, array_dip_density = wig_info
+    f_o = gzip.open(fn_output + '.read_depth.wig.gz', 'wt')
+    f_o.write("browser position " + ref_name + ":" + str(region_begin) + "-" + str(region_begin + len(array_read_depth)) + '\n')
+    f_o.write("browser hide all\n")
+    f_o.write("track type=wiggle_0 name=\"avg_read_depth\" description=\"variableStep format\"  visibility=hide autoScale=on" + \
+            "color=50,150,255 graphType=points priority=10\n")
+    f_o.write("variableStep chrom=" + ref_name + '\n')
+    for idx, depth in enumerate(array_read_depth):
+        f_o.write(str(region_begin+idx) + ' ' + str(round(depth, 2)) + '\n')
+    f_o.close()
+    
+    f_o = gzip.open(fn_output + '.var_density.wig.gz', 'wt')
+    f_o.write("browser position " + ref_name + ":" + str(region_begin) + "-" + str(region_begin + len(array_read_depth)) + '\n')
+    f_o.write("browser hide all\n")
+    f_o.write("track type=wiggle_0 name=\"var_density\" description=\"variableStep format\"  visibility=hide autoScale=on" + \
+            "color=0,200,100 graphType=points priority=20\n")
+    f_o.write("variableStep chrom=" + ref_name + '\n')
+    for idx, depth in enumerate(array_var_density):
+        f_o.write(str(region_begin+idx) + ' ' + str(depth) + '\n')
+    f_o.close()
+    
+    f_o = gzip.open(fn_output + '.dip_density.wig.gz', 'wt')
+    f_o.write("browser position " + ref_name + ":" + str(region_begin) + "-" + str(region_begin + len(array_read_depth)) + '\n')
+    f_o.write("browser hide all\n")
+    f_o.write("track type=wiggle_0 name=\"non_diploid_density\" description=\"variableStep format\"  visibility=hide autoScale=on" + \
+            "color=200,50,50 graphType=points priority=30\n")
+    f_o.write("variableStep chrom=" + ref_name + '\n')
+    for idx, depth in enumerate(array_dip_density):
+        f_o.write(str(region_begin+idx) + ' ' + str(depth) + '\n')
+    f_o.close()
 
 
 def count_density(
@@ -199,45 +242,6 @@ def scanning_bias(
     return ref_name, region_begin, array_read_depth[half_window:-half_window], array_var_density[half_window:-half_window], array_dip_density[half_window:-half_window]
 
 
-def output_wig(
-        fn_output   :str,
-        wig_info    :tuple,
-        window_size
-        ) -> None:
-    """
-    output the wig format for read_depth, var_density, and dip_density
-    """
-    ref_name, region_begin, array_read_depth, array_var_density, array_dip_density = wig_info
-    f_o = open(fn_output + '.read_depth.wig', 'w')
-    f_o.write("browser position " + ref_name + ":" + str(region_begin) + "-" + str(region_begin + len(array_read_depth)) + '\n')
-    f_o.write("browser hide all\n")
-    f_o.write("track type=wiggle_0 name=\"avg_read_depth\" description=\"variableStep format\"  visibility=hide autoScale=on" + \
-            "color=50,150,255 graphType=points priority=10\n")
-    f_o.write("variableStep chrom=" + ref_name + '\n')
-    for idx, depth in enumerate(array_read_depth):
-        f_o.write(str(region_begin+idx) + ' ' + str(round(depth, 2)) + '\n')
-    f_o.close()
-    
-    f_o = open(fn_output + '.var_density.wig', 'w')
-    f_o.write("browser position " + ref_name + ":" + str(region_begin) + "-" + str(region_begin + len(array_read_depth)) + '\n')
-    f_o.write("browser hide all\n")
-    f_o.write("track type=wiggle_0 name=\"var_density\" description=\"variableStep format\"  visibility=hide autoScale=on" + \
-            "color=0,200,100 graphType=points priority=20\n")
-    f_o.write("variableStep chrom=" + ref_name + '\n')
-    for idx, depth in enumerate(array_var_density):
-        f_o.write(str(region_begin+idx) + ' ' + str(depth) + '\n')
-    f_o.close()
-    
-    f_o = open(fn_output + '.dip_density.wig', 'w')
-    f_o.write("browser position " + ref_name + ":" + str(region_begin) + "-" + str(region_begin + len(array_read_depth)) + '\n')
-    f_o.write("browser hide all\n")
-    f_o.write("track type=wiggle_0 name=\"non_diploid_density\" description=\"variableStep format\"  visibility=hide autoScale=on" + \
-            "color=200,50,50 graphType=points priority=30\n")
-    f_o.write("variableStep chrom=" + ref_name + '\n')
-    for idx, depth in enumerate(array_dip_density):
-        f_o.write(str(region_begin+idx) + ' ' + str(depth) + '\n')
-    f_o.close()
-
 
 
 
@@ -257,7 +261,7 @@ if __name__ == "__main__":
     fn_out_wig  = args.out_wig
 
     f_gvcf = pysam.VariantFile(fn_gvcf)
-    tuple_wig = scanning_bias(
+    tuple_3dScore = scanning_bias(
         f_gvcf=f_gvcf,
         rd_thresh=rd_thresh,
         window_size=window_size
@@ -266,6 +270,6 @@ if __name__ == "__main__":
     if fn_out_wig: # output wig files if -ow option
         output_wig(
             fn_output=fn_out_wig,
-            wig_info=tuple_wig,
+            wig_info=tuple_3dScore,
             window_size=window_size
             )
