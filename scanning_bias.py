@@ -193,84 +193,8 @@ def scanning_bias(
     # list_depth
     # list_var_sites
 
-    """
-            if depth*5 >= max_alt_depth: # consider as variant
-                dep_dip_plod[2] = idx + 1
-                if idx >= 1: # more than diploid
-                    dep_dip_plod[1] = 1
-                elif depth*2 <= max_alt_depth: # stronly not diploid
-                    dep_dip_plod[1] = 1
-                elif depth*3 <= max_alt_depth*2: # slightly not diploid
-                    dep_dip_plod[1] = 0.5
-                else: # diploid
-                    dep_dip_plod[1] = 0.01
-                list_var_sites.append([ref_name, var.start, total_depth, alt_depth, list_alleles, dep_dip_plod])
-         
-        dep_dip_plod = [0,0,1] # score of read_depth, deploid, ploidity
-        # calculate depth score
-        if total_depth > 3*rd_thresh: # high read depth
-            dep_dip_plod[0] = 1
-        elif total_depth > 2*rd_thresh: # slightly high read depth
-            dep_dip_plod[0] = 0.5
-    """
-
     # Analyze the density of the variants
     density_var, density_dip = count_density(list_var_sites, window_size)
-
-    """
-    # calculate bias score`/
-    list_bias_vars = score_dep_dip_den(list_var_sites, density_var, density_dip)
-    
-    list_segment = []
-    start_pos = list_var_sites[0][1]
-    end_pos   = list_var_sites[0][1]
-    num_var = 1
-    num_dip = 1 if (list_var_sites[0][-1][1] >= 0.5) else 0
-    tmp_num_var, tmp_num_dip = 0, 0
-    for idx, var_info in enumerate(list_var_sites[1:]):
-        ref_name = var_info[0]
-        site_pos = var_info[1]
-        dep_dip_plod = var_info[-1]
-        non_diploid  = 1 if (dep_dip_plod[1] >= 0.5) else 0
-        if list_bias_vars[idx] == True:
-            if site_pos -end_pos < 1000: # segment connection distance
-                end_pos = site_pos
-                num_var += tmp_num_var + 1
-                num_dip += tmp_num_dip + non_diploid
-            else:
-                list_segment.append((ref_name, start_pos, end_pos, num_var, num_dip))
-                start_pos = site_pos
-                end_pos   = site_pos
-                num_var   = 1
-                num_dip   = non_diploid
-            tmp_num_var = 0
-            tmp_num_dip = 0
-        else:
-            tmp_num_var += 1
-            tmp_num_dip += non_diploid
-    if len(list_segment) == 0 or list_segment[-1][1] != start_pos:
-        list_segment.append((ref_name, start_pos, end_pos, num_var, num_dip))
-
-    # output the segments
-    list_suspicious = []
-    print("The bias region:")
-    print("Ref\tRegion\t\t\tLength\tNum_Var\tNum_non-diplod\tVar_per_1000\tNon-diploid(%)")
-    for segment in list_segment:
-        if segment[2] - segment[1] + 1 > 10000:
-            len_segment = segment[2] - segment[1] + 1
-            print(segment[0], str(segment[1]) + '-' + str(segment[2]), len_segment, segment[3], segment[4], round(segment[3]/len_segment*1000), round(segment[4]/segment[3]*100,1), sep='\t')
-        else:
-            list_suspicious.append(segment)
-    print("The suspicious region:")
-    for segment in list_suspicious:
-        len_segment = segment[2] - segment[1] + 1
-        if segment[3] <= 3:
-            print(segment[0], str(segment[1]) + '-' + str(segment[2]), len_segment, segment[3], segment[4], sep='\t')
-        else:
-            print(segment[0], str(segment[1]) + '-' + str(segment[2]), len_segment, segment[3], segment[4], round(segment[3]/len_segment*1000), round(segment[4]/segment[3]*100,1), sep='\t')
-    print("Number of variantst:", len(list_var_sites))
-    print("Number of non-diploid variants:", sum([(var_info[-1][1] >= 0.5) for var_info in list_var_sites]))
-    """
 
     half_window = round(window_size/2)
     # Counting average readepth over the window
@@ -307,10 +231,13 @@ def scanning_bias(
 def link_bias_region_and_report(
         array_score     :np.array,
         region_begin    :int,
+        ref_name        :str,
+        f_ob            ,
+        f_os            ,
         threshold_1     :int=3,
         threshold_2     :int=5,
         link_dist       :int=1000
-    ) -> None:
+    ) -> tuple:
     """
     Find and link the bias region according to thresholds
     report files:
@@ -341,22 +268,27 @@ def link_bias_region_and_report(
             list_bias.append((pos_start + region_begin, pos_stop + region_begin))
         else:
             list_suspicious.append((pos_start + region_begin, pos_stop + region_begin))
-    print(len(list_bias))
-    for segment in list_bias:
-        print(segment)
-    print(len(list_suspicious))
-    for segment in list_suspicious:
-        print(segment)
-
+    if f_ob:
+        for segment in list_bias:
+            f_ob.write(ref_name + ' ' + str(segment[0]) + ' ' + str(segment[1]) + '\n')
+    if f_os:
+        for segment in list_suspicious:
+            f_os.write(ref_name + ' ' + str(segment[0]) + ' ' + str(segment[1]) + '\n')
+    return list_bias, list_suspicious
 
 
 
 def calculate_3D_score(
-        dict_3D_measures :dict
+        dict_3D_measures :dict,
+        fn_out_report    :str
     ) -> tuple:
     """
     Take in the 3D measures and output the 3D score
     """
+    f_ob = open(fn_out_report + '.bias.bed', 'w')
+    f_os = open(fn_out_report + '.suspicious.bed', 'w')
+    f_ob.write('#chrom chromStart chromEnd\n')
+    f_os.write('#chrom chromStart chromEnd\n')
     for ref_name, dict_region_begin in dict_3D_measures.items():
         for region_begin, array_info in dict_region_begin.items():
             array_read_depth, array_var_density, array_dip_density = array_info
@@ -373,7 +305,9 @@ def calculate_3D_score(
 
             array_score_sum = np.round(array_read_depth/avg_read_depth) + (array_var_density/positive_avg_var) + (array_dip_density/positive_avg_dip)
             array_score_sum = np.where(array_score_sum > 30, 30, array_score_sum)
-            link_bias_region_and_report(array_score_sum, region_begin)
+            link_bias_region_and_report(array_score_sum, region_begin, ref_name, f_ob, f_os)
+    f_ob.close()
+    f_os.close()
 
     #return array_score_product, array_score_sum
     return ref_name, region_begin, array_read_depth, array_var_density, array_dip_density, array_score_product, array_score_sum
@@ -388,37 +322,41 @@ if __name__ == "__main__":
     parser.add_argument('-g', '--gvcf_file', help='the gvcf file of a specific region')
     parser.add_argument('-w', '--window_size', help='window size for average depth, density analysis', type=int, default=400)
     parser.add_argument('-rd', '--read_depth', help='the average sequence read depth', type=int, default=30)
-    parser.add_argument('-ow', '--out_wig', help='scanning report')
+    parser.add_argument('-o',  '--out_report', help='scanning bed file and reports')
+    parser.add_argument('-wig', '--out_wig', help='flag for wig output', action='store_true')
     args = parser.parse_args()
     
-    fn_gvcf     = args.gvcf_file
-    rd_thresh   = args.read_depth
-    window_size = args.window_size
-    fn_out_wig  = args.out_wig
+    fn_gvcf       = args.gvcf_file
+    rd_thresh     = args.read_depth
+    window_size   = args.window_size
+    fn_out_report = args.out_report
+    flag_wig      = args.out_wig
 
     f_gvcf = pysam.VariantFile(fn_gvcf)
     # load or calculate the 3D measures depending on pickle file existance
-    if os.path.exists(fn_out_wig + '.pickle'):
-        print("Pickle file", fn_out_wig + '.pickle', 'exist, load it instead of recalculate...')
-        f_i = open(fn_out_wig + '.pickle', 'rb')
+    if os.path.exists(fn_out_report + '.pickle'):
+        print("Pickle file", fn_out_report + '.pickle', 'exist, load it instead of recalculate...')
+        f_i = open(fn_out_report + '.pickle', 'rb')
         dict_3D_measures = pickle.load(f_i)
         f_i.close()
     else:
+        print("Process the mpileup file", fn_gvcf + '...')
         dict_3D_measures = scanning_bias(
             f_gvcf=f_gvcf,
             rd_thresh=rd_thresh,
             window_size=window_size
             )
-        f_o = open(fn_out_wig + '.pickle', 'wb')
+        print("Store the measures information as", fn_out_report + '.pickle...')
+        f_o = open(fn_out_report + '.pickle', 'wb')
         pickle.dump(dict_3D_measures, f_o)
         f_o.close()
     
-    print("Calculate 3D scoring...")
-    tuple_3dScore = calculate_3D_score(dict_3D_measures)
+    print("Calculate 3D scoring and output bed...")
+    tuple_3dScore = calculate_3D_score(dict_3D_measures, fn_out_report)
 
     print("Output wig format...")
-    if fn_out_wig: # output wig files if -ow option
+    if flag_wig: # output wig files if -ow option
         report_wig(
-            fn_output=fn_out_wig,
+            fn_output=fn_out_report,
             wig_info=tuple_3dScore
             )
