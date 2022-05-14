@@ -144,8 +144,7 @@ def score_dep_dip_den(
 
 def scanning_bias(
         f_gvcf      :pysam.VariantRecord,
-        rd_thresh   :int,
-        window_size :int
+        window_size :int=400
         ) -> dict:
     """
     Scanning the fn_gvcf to find the region with 
@@ -157,12 +156,15 @@ def scanning_bias(
     ref_name = None         # record the reference name
     list_depth = []         # record the read_depth per site
     list_var_sites = []     # record the variant information per var
+    dict_ref_info  = {}
     for var in f_gvcf:
         ref_name = var.contig
+        if dict_ref_info.get(ref_name) == None:
+            dict_ref_info[ref_name] = {'depth':[], 'var':[]}
         total_depth = var.samples[0]['DP']
         
         # store the read depth
-        list_depth.append((var.start, total_depth))
+        dict_ref_info[ref_name]['depth'].append((var.start, total_depth))
 
         alt_depth = None
         if var.samples[0].get('AD'):
@@ -187,44 +189,46 @@ def scanning_bias(
             nonDip_flag = False
             if num_var > 2 or list_alt_depth[1]*2 <= list_alt_depth[0]:
                 nonDip_flag = True                                                              # -> for debug purpose
-            list_var_sites.append([var.start, total_depth, list_alt_depth[:num_var], nonDip_flag, alt_depth, list_alleles])
+            dict_ref_info[ref_name]['var'].append([var.start, total_depth, list_alt_depth[:num_var], nonDip_flag, alt_depth, list_alleles])
 
     # Two parameters we have:
     # list_depth
     # list_var_sites
 
     # Analyze the density of the variants
-    density_var, density_dip = count_density(list_var_sites, window_size)
-
-    half_window = round(window_size/2)
-    # Counting average readepth over the window
-    region_begin = list_depth[0][0]
-    region_end   = list_depth[-1][0]
-    array_read_depth = np.zeros(region_end - region_begin + window_size)
-    for site_info in list_depth:
-        index = site_info[0] - region_begin
-        depth = site_info[1]
-        array_read_depth[index:index+window_size] += depth
-    array_read_depth /= window_size
-    array_read_depth = array_read_depth[half_window:-half_window]
-
-    # Calculate variant density over the window
-    array_var_density = np.zeros(region_end - region_begin + window_size)
-    array_dip_density = np.zeros(region_end - region_begin + window_size)
-    for site_info in list_var_sites:
-        index = site_info[0] - region_begin
-        nonDip_flag = site_info[3]
-    
-        array_var_density[index:index+window_size] += 1
-        if nonDip_flag:
-            array_dip_density[index:index+window_size] += 1
-    array_var_density = array_var_density[half_window:-half_window]
-    array_dip_density = array_dip_density[half_window:-half_window]
-
     dict_3D_measures = {}
-    dict_3D_measures[ref_name] = {}
-    dict_3D_measures[ref_name][region_begin] = [array_read_depth, array_var_density, array_dip_density]
-    #return ref_name, region_begin, array_read_depth, array_var_density, array_dip_density, array_score_product, array_score_sum
+    for ref_name, dict_var_info in dict_ref_info.items():
+        list_depth     = dict_var_info['depth']
+        list_var_sites = dict_var_info['var']
+        density_var, density_dip = count_density(list_var_sites, window_size)
+
+        half_window = round(window_size/2)
+        # Counting average readepth over the window
+        region_begin = list_depth[0][0]
+        region_end   = list_depth[-1][0]
+        array_read_depth = np.zeros(region_end - region_begin + window_size)
+        for site_info in list_depth:
+            index = site_info[0] - region_begin
+            depth = site_info[1]
+            array_read_depth[index:index+window_size] += depth
+        array_read_depth /= window_size
+        array_read_depth = array_read_depth[half_window:-half_window]
+
+        # Calculate variant density over the window
+        array_var_density = np.zeros(region_end - region_begin + window_size)
+        array_dip_density = np.zeros(region_end - region_begin + window_size)
+        for site_info in list_var_sites:
+            index = site_info[0] - region_begin
+            nonDip_flag = site_info[3]
+        
+            array_var_density[index:index+window_size] += 1
+            if nonDip_flag:
+                array_dip_density[index:index+window_size] += 1
+        array_var_density = array_var_density[half_window:-half_window]
+        array_dip_density = array_dip_density[half_window:-half_window]
+
+        dict_3D_measures[ref_name] = {}
+        dict_3D_measures[ref_name][region_begin] = [array_read_depth, array_var_density, array_dip_density]
     return dict_3D_measures
 
 
@@ -343,7 +347,6 @@ if __name__ == "__main__":
         print("Process the mpileup file", fn_gvcf + '...')
         dict_3D_measures = scanning_bias(
             f_gvcf=f_gvcf,
-            rd_thresh=rd_thresh,
             window_size=window_size
             )
         print("Store the measures information as", fn_out_report + '.pickle...')
