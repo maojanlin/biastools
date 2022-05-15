@@ -9,7 +9,8 @@ from scanning_bias import scanning_bias
 
 
 def baseline(
-        f_mpileup   :pysam.VariantRecord
+        f_mpileup   :pysam.VariantRecord,
+        fn_sample   :str
         ) -> tuple:
     """
     Take in the sample mpileup, and output the average read_depth/variant Density/non Diploid portion
@@ -21,7 +22,9 @@ def baseline(
     total_read_depth  = np.array([])
     total_var_density = np.array([])
     total_dip_density = np.array([])
-    print('read_depth(mean/std)   var_density   non_diploid')
+    
+    fo = open(fn_sample + '.baseline', 'w')
+    fo.write('#chr pos segment_len RD_mean RD_std VD_mean VD_std ND_mean ND_std\n')
     for ref_name, dict_array in dict_3D_measures.items():
         for start_pos, array_info in dict_array.items():
             array_read_depth, array_var_density, array_dip_density = array_info
@@ -32,26 +35,59 @@ def baseline(
             #positive_std_var = np.std(array_var_density)
             #positive_avg_dip = np.mean(array_dip_density)
             #positive_std_dip = np.std(array_dip_density)
-            positive_var     = array_var_density[array_var_density != 0]
-            positive_dip     = array_dip_density[array_var_density != 0]
-            positive_avg_var = np.mean(positive_var)
-            positive_std_var = np.std(positive_var)
-            positive_avg_dip = np.mean(positive_dip)
-            positive_std_dip = np.std(positive_dip)
 
-            print(ref_name, round(avg_read_depth,2), round(std_read_depth,2), '     ', round(positive_avg_var,2), round(positive_std_var,2), '     ', round(positive_avg_dip,2), round(positive_std_dip, 2))
+            fo.write(ref_name + ' ' + str(start_pos) + ' ' + str(len(array_read_depth)) + ' ')
+            fo.write(str(round(avg_read_depth,2))   + ' ' + str(round(std_read_depth,2)) + ' ')
+            positive_var     = array_var_density[array_var_density != 0]
+            if len(positive_var) > 0:
+                positive_avg_var = np.mean(positive_var)
+                positive_std_var = np.std(positive_var)
+                fo.write(str(round(positive_avg_var,2)) + ' ' + str(round(positive_std_var,2)) + ' ')
+            
+            positive_dip     = array_dip_density[array_var_density != 0]
+            if len(positive_dip) > 0:
+                positive_avg_dip = np.mean(positive_dip)
+                positive_std_dip = np.std(positive_dip)
+                fo.write(str(round(positive_avg_dip,2)) + ' ' + str( round(positive_std_dip, 2)) + '\n')
+            else:
+                fo.write('\n')
+            
             total_read_depth  = np.concatenate((total_read_depth , array_read_depth))
             total_var_density = np.concatenate((total_var_density, positive_var))
             total_dip_density = np.concatenate((total_dip_density, positive_dip))
+            #total_var_density = np.concatenate((total_var_density, array_var_density))
+            #total_dip_density = np.concatenate((total_dip_density, array_dip_density))
     
-    print(len(total_read_depth))
-    print('total_read_depth (mean/std)')
-    print(round(np.mean(total_read_depth),2), round(np.std(total_read_depth),2))
-    print('total_var_density (mean/std)')
-    print(round(np.mean(total_var_density),2), round(np.std(total_var_density),2))
-    print('total_non_diploid (mean/std)')
-    print(round(np.mean(total_dip_density),2), round(np.std(total_dip_density),2))
+    fo.write('#total sample len: ' + str(len(total_read_depth)) + '\n')
+    fo.write('#total_statistics:\n')
+    fo.write('#chr pos segment_len RD_mean RD_std VD_mean VD_std ND_mean ND_std\n# ')
+    fo.write(str(round(np.mean(total_read_depth),5))  + ' ' + str(round(np.std(total_read_depth),5)))
+    fo.write(str(round(np.mean(total_var_density),5)) + ' ' + str(round(np.std(total_var_density),5)))
+    fo.write(str(round(np.mean(total_dip_density),5)) + ' ' + str(round(np.std(total_dip_density),5)))
+    fo.close()
     return np.mean(total_read_depth), np.mean(total_var_density), np.mean(total_dip_density)
+
+
+def sample_select(
+        fn_sample   :str,
+        seed        :int,
+        min_len     :int,
+        f_bam       :pysam.AlignmentFile
+    ):
+    """
+    Take out the contig length greater than min_len (threshold_contig)
+    For each contig, takes 100 segments totally equal to 1/1000 of the contig length
+    """
+    random.seed(seed)
+    fo = open(fn_sample + '.bed', 'w')
+    for idx, name in enumerate(f_bam.header.references):
+        contig_len = f_bam.header.lengths[idx]
+        if contig_len > min_len:
+            thousandth = int(contig_len / 100000)
+            list_sample_start = random.sample(range(thousandth - 1), 100)
+            for sample_start in sorted(list_sample_start):
+                fo.write(name + ' ' + str(sample_start*thousandth) + ' ' + str(sample_start*thousandth+thousandth) + '\n')
+    fo.close()
 
 
 
@@ -76,15 +112,9 @@ if __name__ == "__main__":
 
     f_bam = pysam.AlignmentFile(fn_bam)
 
-    random.seed(seed)
-    fo = open(fn_sample + '.bed', 'w')
-    for idx, name in enumerate(f_bam.header.references):
-        contig_len = f_bam.header.lengths[idx]
-        if contig_len > min_len:
-            thousandth = int(contig_len / 1000)
-            sample_start = random.randint(0, contig_len - thousandth)
-            fo.write(name + ' ' + str(sample_start) + ' ' + str(sample_start+thousandth) + '\n')
-    fo.close()
+    # sample bed file according to the bam file information
+    sample_select(fn_sample, seed, min_len, f_bam)
+
 
     # SAMTOOLS command for extract the sample region bam file
     if os.path.exists(fn_sample + '.bam') and not kill_flag:
@@ -104,6 +134,6 @@ if __name__ == "__main__":
         call(command, shell=True)
 
     f_mpileup = pysam.VariantFile(fn_sample + '.mpileup')
-    baseline(f_mpileup)
+    baseline(f_mpileup, fn_sample)
 
     
