@@ -10,13 +10,15 @@ from scanning_bias import scanning_bias
 
 def baseline(
         f_mpileup   :pysam.VariantRecord,
-        fn_sample   :str
+        fn_sample   :str,
+        window_size :int
         ) -> tuple:
     """
     Take in the sample mpileup, and output the average read_depth/variant Density/non Diploid portion
     """
     dict_3D_measures = scanning_bias(
-        f_gvcf=f_mpileup
+        f_gvcf=f_mpileup,
+        window_size=window_size
         )
     
     total_read_depth  = np.array([])
@@ -61,8 +63,8 @@ def baseline(
     fo.write('#total sample len: ' + str(len(total_read_depth)) + '\n')
     fo.write('#total_statistics:\n')
     fo.write('#chr pos segment_len RD_mean RD_std VD_mean VD_std ND_mean ND_std\n# ')
-    fo.write(str(round(np.mean(total_read_depth),5))  + ' ' + str(round(np.std(total_read_depth),5)))
-    fo.write(str(round(np.mean(total_var_density),5)) + ' ' + str(round(np.std(total_var_density),5)))
+    fo.write(str(round(np.mean(total_read_depth),5))  + ' ' + str(round(np.std(total_read_depth),5)) + ' ')
+    fo.write(str(round(np.mean(total_var_density),5)) + ' ' + str(round(np.std(total_var_density),5)) + ' ')
     fo.write(str(round(np.mean(total_dip_density),5)) + ' ' + str(round(np.std(total_dip_density),5)))
     fo.close()
     return np.mean(total_read_depth), np.mean(total_var_density), np.mean(total_dip_density)
@@ -98,6 +100,7 @@ if __name__ == "__main__":
     parser.add_argument('-b', '--bam_file', help='the bam file we want to sample')
     parser.add_argument('-f', '--reference_fasta', help='the reference fasta file for mpileup building')
     parser.add_argument('-o', '--sample_bed', help='the sampled 1/1000 bed file')
+    parser.add_argument('-w', '--window_size', help='window size for average depth, density analysis', type=int, default=400)
     parser.add_argument('-th', '--threshold_contig', help='the minimum contig length for sampling', type=int, default=10000000)
     parser.add_argument('--seed', help='seed for random sampling', type=int, default=0)
     parser.add_argument('-k', '--kill', help='kill all storage files', action='store_true')
@@ -107,6 +110,7 @@ if __name__ == "__main__":
     fn_ref    = args.reference_fasta
     fn_sample = args.sample_bed
     min_len   = args.threshold_contig
+    window_size = args.window_size
     seed      = args.seed
     kill_flag = args.kill
 
@@ -134,6 +138,6 @@ if __name__ == "__main__":
         call(command, shell=True)
 
     f_mpileup = pysam.VariantFile(fn_sample + '.mpileup')
-    baseline(f_mpileup, fn_sample)
+    baseline(f_mpileup, fn_sample, window_size)
 
     

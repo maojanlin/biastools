@@ -9,75 +9,67 @@ import pickle
 
 def output_wig(
         output_name :str,
-        ref_name    :str,
         data_name   :str,
-        wig_start   :int,
-        wig_end     :int,
-        array_wig   :np.array
+        list_data   :list
         ) -> None:
     """
     output single wig file
     """
     f_o = gzip.open(output_name, 'wt')
-    f_o.write("browser position " + ref_name + ":" + str(wig_start) + "-" + str(wig_end) + '\n')
-    f_o.write("browser hide all\n")
-    f_o.write("track type=wiggle_0 name=\"" + data_name + "\" description=\"variableStep format\"  visibility=hide autoScale=on" + \
-            "color=50,150,255 graphType=points priority=10\n")
-    f_o.write("variableStep chrom=" + ref_name + '\n')
-    for idx, depth in enumerate(array_wig):
-        f_o.write(str(wig_start+idx) + ' ' + str(round(depth, 2)) + '\n')
+    for array_info in list_data:
+        ref_name, wig_start, array_wig = array_info
+        wig_end = wig_start + len(array_wig)
+        
+        f_o.write("browser position " + ref_name + ":" + str(wig_start) + "-" + str(wig_end) + '\n')
+        f_o.write("browser hide all\n")
+        f_o.write("track type=wiggle_0 name=\"" + data_name + "\" description=\"variableStep format\"  visibility=hide autoScale=on" + \
+                "color=50,150,255 graphType=points priority=10\n")
+        f_o.write("variableStep chrom=" + ref_name + '\n')
+        for idx, depth in enumerate(array_wig):
+            f_o.write(str(wig_start+idx) + ' ' + str(round(depth, 2)) + '\n')
     f_o.close()
 
 
 
 def report_wig(
-        fn_output   :str,
-        wig_info    :tuple,
+        fn_output           :str,
+        dict_3D_measures    :dict,
         ) -> None:
     """
     output the wig format for read_depth, var_density, and dip_density
     this whole process take times
     """
-    ref_name, region_begin, array_read_depth, array_var_density, array_dip_density, array_score, array_score_sum = wig_info
+    # list_info is composed of array_RD, array_VD, array_ND, array_score
+    # (ref_name, region_begin, array_info)
+    list_info = [[],[],[],[]]
+    #ref_name, region_begin, array_read_depth, array_var_density, array_dip_density, array_score, array_score_sum = wig_info
+    for ref_name, dict_array in dict_3D_measures.items():
+        for start_pos, array_info in dict_array.items():
+            array_RD, array_VD, array_ND, array_score = array_info
+            list_info[0].append((ref_name, start_pos, array_RD))
+            list_info[1].append((ref_name, start_pos, array_VD))
+            list_info[2].append((ref_name, start_pos, array_ND))
+            list_info[3].append((ref_name, start_pos, array_score))
+
     output_wig(
         output_name = (fn_output + '.read_depth.wig.gz'),
-        ref_name    = ref_name,
         data_name   = 'avg_read_depth',
-        wig_start   = region_begin,
-        wig_end     = region_begin+len(array_read_depth),
-        array_wig   = array_read_depth
+        list_data   = list_info[0]
         )
     output_wig(
         output_name = (fn_output + '.var_density.wig.gz'),
-        ref_name    = ref_name,
         data_name   = 'var_density',
-        wig_start   = region_begin,
-        wig_end     = region_begin+len(array_var_density),
-        array_wig   = array_var_density
+        list_data   = list_info[1]
         )
     output_wig(
         output_name = (fn_output + '.dip_density.wig.gz'),
-        ref_name    = ref_name,
         data_name   = 'non_diploid_density',
-        wig_start   = region_begin,
-        wig_end     = region_begin+len(array_dip_density),
-        array_wig   = array_dip_density
-        )
-    output_wig(
-        output_name = (fn_output + '.score.wig.gz'),
-        ref_name    = ref_name,
-        data_name   = '3D_scoring_product',
-        wig_start   = region_begin,
-        wig_end     = region_begin+len(array_score),
-        array_wig   = array_score
+        list_data   = list_info[2]
         )
     output_wig(
         output_name = (fn_output + '.score_sum.wig.gz'),
-        ref_name    = ref_name,
         data_name   = '3D_scoring_sum',
-        wig_start   = region_begin,
-        wig_end     = region_begin+len(array_score_sum),
-        array_wig   = array_score_sum
+        list_data   = list_info[3]
         )
 
 
@@ -285,17 +277,19 @@ def link_bias_region_and_report(
             list_suspicious.append((pos_start + region_begin, pos_stop + region_begin))
     if f_ob:
         for segment in list_bias:
-            f_ob.write(ref_name + ' ' + str(segment[0]) + ' ' + str(segment[1]) + '\n')
+            f_ob.write(ref_name + ' ' + str(segment[0]) + ' ' + str(segment[1]) + ' len_' + str(segment[1]-segment[0]) + '\n')
     if f_os:
         for segment in list_suspicious:
-            f_os.write(ref_name + ' ' + str(segment[0]) + ' ' + str(segment[1]) + '\n')
+            f_os.write(ref_name + ' ' + str(segment[0]) + ' ' + str(segment[1]) + ' len_' + str(segment[1]-segment[0]) + '\n')
     return list_bias, list_suspicious
-
 
 
 def calculate_3D_score(
         dict_3D_measures :dict,
-        fn_out_report    :str
+        fn_out_report    :str,
+        avg_RD           :float,
+        avg_VD           :float,
+        avg_ND           :float
     ) -> tuple:
     """
     Take in the 3D measures and output the 3D score
@@ -308,25 +302,47 @@ def calculate_3D_score(
         for region_begin, array_info in dict_region_begin.items():
             array_read_depth, array_var_density, array_dip_density = array_info
             
-            # calculate the mean for normalization 
-            #TODO should be replaced by biastools.baseline
-            avg_read_depth   = np.mean(array_read_depth)
-            positive_avg_var = sum(array_var_density*(array_var_density!=0))/sum(array_var_density!=0)
-            positive_avg_dip = sum(array_dip_density*(array_dip_density!=0))/sum(array_dip_density!=0)
-            
-            #print(avg_read_depth, positive_avg_var, positive_avg_dip)
-            array_score_product = np.round(array_read_depth/avg_read_depth) * (array_var_density/positive_avg_var+0.1) * (array_dip_density/positive_avg_dip+0.1)
-            array_score_product = np.where(array_score_product > 30, 30, array_score_product)
+            #array_score_product = np.round(array_read_depth/avg_RD) * (array_var_density/avg_VD+0.1) * (array_dip_density/avg_ND+0.1)
+            #array_score_product = np.where(array_score_product > 30, 30, array_score_product)
 
-            array_score_sum = np.round(array_read_depth/avg_read_depth) + (array_var_density/positive_avg_var) + (array_dip_density/positive_avg_dip)
-            array_score_sum = np.where(array_score_sum > 30, 30, array_score_sum)
+            array_score_sum = np.round(array_read_depth/avg_RD) + (array_var_density/avg_VD) + (array_dip_density/avg_ND)
+            #array_score_sum = np.where(array_score_sum > 30, 30, array_score_sum)
             link_bias_region_and_report(array_score_sum, region_begin, ref_name, f_ob, f_os)
+            dict_3D_measures[ref_name][region_begin].append(array_score_sum)
     f_ob.close()
     f_os.close()
 
-    #return array_score_product, array_score_sum
-    return ref_name, region_begin, array_read_depth, array_var_density, array_dip_density, array_score_product, array_score_sum
 
+def get_baseline(
+        fn_baseline :str
+    ) -> tuple:
+    """
+    Take and parse the last line of fn_baseline
+    """
+    f = open(fn_baseline, 'r')
+    for line in f:
+        pass
+    f.close()
+    _, avg_RD, _,avg_VD, _, avg_ND, _ = line.split()
+    return float(avg_RD), float(avg_VD), float(avg_ND)
+
+
+def calculate_avg(
+        dict_3D_measures :dict,
+    ):
+    total_read_depth  = np.array([])
+    total_var_density = np.array([])
+    total_dip_density = np.array([])
+    for ref_name, dict_array in dict_3D_measures.items():
+        for start_pos, array_info in dict_array.items():
+            array_read_depth, array_var_density, array_dip_density = array_info
+            positive_var      = array_var_density[array_var_density != 0]
+            positive_dip      = array_dip_density[array_var_density != 0]
+            
+            total_read_depth  = np.concatenate((total_read_depth , array_read_depth))
+            total_var_density = np.concatenate((total_var_density, positive_var))
+            total_dip_density = np.concatenate((total_dip_density, positive_dip))
+    return np.mean(total_read_depth), np.mean(total_var_density), np.mean(total_dip_density)
 
 
 
@@ -367,12 +383,20 @@ if __name__ == "__main__":
         pickle.dump(dict_3D_measures, f_o)
         f_o.close()
     
-    print("Calculate 3D scoring and output bed...")
-    tuple_3dScore = calculate_3D_score(dict_3D_measures, fn_out_report)
+    # Load or calculate the baseline of the measures
+    if fn_baseline:
+        avg_RD, avg_VD, avg_ND = get_baseline(fn_baseline)
+    else:
+        avg_RD, avg_VD, avg_ND = calculate_avg(dict_3D_measures)
+    if rd_thresh:
+        avg_RD = rd_thresh
 
-    print("Output wig format...")
+    print("Calculate 3D scoring and output bed...")
+    calculate_3D_score(dict_3D_measures, fn_out_report, avg_RD, avg_VD, avg_ND)
+
     if flag_wig: # output wig files if -ow option
+        print("Output wig format...")
         report_wig(
             fn_output=fn_out_report,
-            wig_info=tuple_3dScore
+            dict_3D_measures=dict_3D_measures
             )
