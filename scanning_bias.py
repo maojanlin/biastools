@@ -101,39 +101,6 @@ def count_density(
     return density_var, density_dip
 
 
-def score_dep_dip_den(
-        list_var_sites  :list,
-        density_var     :list,
-        density_dip     :list,
-        debug           :bool=False
-        ) -> list:
-    """
-    count the final scoring based on the depth / density of var / proportion of non-diploid var
-    """
-    list_bias_vars = []
-    for idx, var_info in enumerate(list_var_sites):
-        # Depth score
-        score = [var_info[-1][0],0,0]
-        # Density score
-        if density_var[idx] > 10: 
-            score[2] = 1
-        elif density_var[idx] > 3:
-            score[2] = 0.5
-        # Diploid score
-        if density_dip[idx]*2 > density_var[idx]:
-            score[1] = 1
-        elif density_dip[idx]*10 > density_var[idx]*3:
-            score[1] =0.5
-        # final score
-        list_bias_vars.append(sum(score) >= 2)
-        if debug:
-            if sum(score) >= 2:
-                print('*', round(density_dip[idx],1), density_var[idx], var_info)
-            else:
-                print(' ', round(density_dip[idx],1), density_var[idx], var_info)
-    return list_bias_vars
-
-
 def scanning_bias(
         f_gvcf      :pysam.VariantRecord,
         window_size :int=400
@@ -306,6 +273,7 @@ def calculate_3D_score(
             #array_score_product = np.where(array_score_product > 30, 30, array_score_product)
 
             array_score_sum = np.round(array_read_depth/avg_RD) + (array_var_density/avg_VD) + (array_dip_density/avg_ND)
+            array_score_sum = np.where(array_read_depth > avg_RD/2, array_score_sum, 0)
             #array_score_sum = np.where(array_score_sum > 30, 30, array_score_sum)
             link_bias_region_and_report(array_score_sum, region_begin, ref_name, f_ob, f_os)
             dict_3D_measures[ref_name][region_begin].append(array_score_sum)
