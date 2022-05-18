@@ -41,12 +41,14 @@ def baseline(
             fo.write(ref_name + ' ' + str(start_pos) + ' ' + str(len(array_read_depth)) + ' ')
             fo.write(str(round(avg_read_depth,2))   + ' ' + str(round(std_read_depth,2)) + ' ')
             positive_var     = array_var_density[array_var_density != 0]
+            #positive_var     = array_var_density
             if len(positive_var) > 0:
                 positive_avg_var = np.mean(positive_var)
                 positive_std_var = np.std(positive_var)
                 fo.write(str(round(positive_avg_var,2)) + ' ' + str(round(positive_std_var,2)) + ' ')
             
             positive_dip     = array_dip_density[array_var_density != 0]
+            #positive_dip     = array_dip_density
             if len(positive_dip) > 0:
                 positive_avg_dip = np.mean(positive_dip)
                 positive_std_dip = np.std(positive_dip)
@@ -86,7 +88,7 @@ def sample_select(
         contig_len = f_bam.header.lengths[idx]
         if contig_len > min_len:
             thousandth = int(contig_len / 100000)
-            list_sample_start = random.sample(range(thousandth - 1), 100)
+            list_sample_start = random.sample(range(100000 - 1), 100)
             for sample_start in sorted(list_sample_start):
                 fo.write(name + ' ' + str(sample_start*thousandth) + ' ' + str(sample_start*thousandth+thousandth) + '\n')
     fo.close()
