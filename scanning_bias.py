@@ -73,43 +73,15 @@ def report_wig(
         )
 
 
-def count_density(
-        list_var_sites  :list,
-        window_size     :int=400
-        ) -> list:
-    """
-    count how many variants and non-diploid variants are nearby (with in window size)
-    """
-    half_window = round(window_size/2)
-    density_var = np.zeros(len(list_var_sites))
-    density_dip = np.zeros(len(list_var_sites))
-    for idx, var_info in enumerate(list_var_sites):
-        idy = idx + 1
-        pos = var_info[1]
-        while idy < len(list_var_sites):
-            pos_check = list_var_sites[idy][1]
-            if pos_check <= pos + half_window:
-                # how many variants are nearby
-                density_var[idx] += 1
-                density_var[idy] += 1
-                # how many non-diploid variants are nearby
-                density_dip[idx] += list_var_sites[idy][3]
-                density_dip[idy] += var_info[3]
-            else:
-                break
-            idy += 1
-    return density_var, density_dip
-
-
 def scanning_bias(
-        f_gvcf      :pysam.VariantRecord,
-        window_size :int=400
+        f_gvcf      :pysam.VariantRecord
         ) -> dict:
     """
     Scanning the fn_gvcf to find the region with 
         - high read depth,
         - high density of variants, or
         - non diploid evidence.
+    return the raw numbers
     """
     # Extract the read_depth and variant informations
     ref_name = None # record the reference name
@@ -126,6 +98,8 @@ def scanning_bias(
         elif var.start > last_pos + 1: # the same chromsome, new position
             start_pos = var.start
             dict_ref_info[ref_name][start_pos] = {'depth':[], 'var':[]}
+        elif var.start == last_pos: # duplicate position, pop the last read depth info
+            dict_ref_info[ref_name][start_pos]['depth'].pop() 
         last_pos = var.start
         
         ref_name = var.contig
@@ -149,16 +123,48 @@ def scanning_bias(
         #max_alt_depth = list_alt_depth[0]
         num_var = 0
         for idx, depth in enumerate(list_alt_depth):
-            if depth >= total_depth*15/100: # consider as variant
+            if depth > total_depth*15/100: # consider as variant, exclude the 0,0 case
                 num_var = idx + 1
             else:
                 break
         if num_var > 1:
             nonDip_flag = False
-            if num_var > 2 or list_alt_depth[1]*2 <= list_alt_depth[0]:
-                nonDip_flag = True                                                              # -> for debug purpose
+            if num_var > 2 or list_alt_depth[1]*2 < list_alt_depth[0]:
+                nonDip_flag = True                                                                                           # -> for debug purpose
             dict_ref_info[ref_name][start_pos]['var'].append([var.start, total_depth, list_alt_depth[:num_var], nonDip_flag, alt_depth, list_alleles])
+    return dict_ref_info
 
+
+def boundary_compensate(
+        target_array    :np.array,
+        window_size     :int
+    ) -> np.array:
+    """
+    compensate for padding zeros
+    """
+    if len(target_array) < window_size:
+        return target_array
+
+    half_window = int(window_size/2)
+    # compensate left side
+    for idx in range(half_window):
+        target_array[idx] *= (window_size / (half_window+idx))
+    # compensate right side
+    for idx in range(-1, -half_window-1, -1):
+        target_array[idx] *= (window_size / (half_window-idx-1))
+    return target_array
+
+
+def calculate_measures(
+        dict_ref_info   :dict,
+        window_size     :int=400
+    ) -> dict:
+    """
+    Take the raw data and calculate 
+        - the moving average of read_depth
+        - over window number of variants
+        - over window number of non_diploid site
+    """
     # Two parameters we have:
     # list_depth
     # list_var_sites
@@ -170,12 +176,11 @@ def scanning_bias(
         for start_pos, dict_var_info in dict_start_pos.items():
             list_depth     = dict_var_info['depth']
             list_var_sites = dict_var_info['var']
-            density_var, density_dip = count_density(list_var_sites, window_size)
 
             half_window = round(window_size/2)
-            # Counting average readepth over the window
+            # Counting average readepth over the window (moving average)
             region_begin = list_depth[0][0]
-            region_end   = list_depth[-1][0]
+            region_end   = list_depth[-1][0] + 1
             assert(start_pos == region_begin)
             array_read_depth = np.zeros(region_end - region_begin + window_size)
             for site_info in list_depth:
@@ -184,6 +189,7 @@ def scanning_bias(
                 array_read_depth[index:index+window_size] += depth
             array_read_depth /= window_size
             array_read_depth = array_read_depth[half_window:-half_window]
+            array_read_depth = boundary_compensate(array_read_depth, window_size)
 
             # Calculate variant density over the window
             array_var_density = np.zeros(region_end - region_begin + window_size)
@@ -197,6 +203,8 @@ def scanning_bias(
                     array_dip_density[index:index+window_size] += 1
             array_var_density = array_var_density[half_window:-half_window]
             array_dip_density = array_dip_density[half_window:-half_window]
+            #array_var_density = boundary_compensate(array_var_density, window_size)
+            #array_dip_density = boundary_compensate(array_dip_density, window_size)
 
             dict_3D_measures[ref_name][region_begin] = [array_read_depth, array_var_density, array_dip_density]
     return dict_3D_measures
@@ -342,8 +350,9 @@ if __name__ == "__main__":
         f_i.close()
     else:
         print("Process the mpileup file", fn_gvcf + '...')
-        dict_3D_measures = scanning_bias(
-            f_gvcf=f_gvcf,
+        dict_ref_info = scanning_bias(f_gvcf=f_gvcf)
+        dict_3D_measures = calculate_measures(
+            dict_ref_info=dict_ref_info,
             window_size=window_size
             )
         print("Store the measures information as", fn_out_report + '.pickle...')
