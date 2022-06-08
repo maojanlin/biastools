@@ -446,6 +446,7 @@ def compare_sam_to_haps(
             if dict_ref_cohorts[ref_name].get(var.start): # Anchor Left
                 cohort_start, cohort_stop, cohort_seq0, cohort_seq1, lpad_0, lpad_1, rpad_0, rpad_1 = dict_ref_cohorts[ref_name][var.start] 
                                                                                                                         # the left, right min-require covering at least 1bp in var
+                                                                                                                        # performance better than covering all var
                 match_flag_0 = match_to_hap(seq_name, pos_start, pos_end, cohort_start, read_seq, cohort_seq0, cigar_tuples, padding, lpad_0+1, rpad_0+1, True)
                 match_flag_1 = match_to_hap(seq_name, pos_start, pos_end, cohort_start, read_seq, cohort_seq1, cigar_tuples, padding, lpad_1+1, rpad_1+1, True)
                 if not ((match_flag_0 == 1 and match_flag_1 != 1) or (match_flag_1 == 1 and  match_flag_0 !=1)): # Anchor Right
