@@ -262,13 +262,13 @@ def link_bias_region_and_report(
 def calculate_3D_score(
         dict_3D_measures :dict,
         fn_out_report    :str,
-        avg_RD           :float,
-        avg_VD           :float,
-        avg_ND           :float
+        list_statistics  :list
     ) -> tuple:
     """
     Take in the 3D measures and output the 3D score
     """
+    avg_RD, std_RD, avg_VD, std_VD, avg_ND, std_ND = list_statistics
+
     f_ob = open(fn_out_report + '.bias.bed', 'w')
     f_os = open(fn_out_report + '.suspicious.bed', 'w')
     f_ob.write('#chrom chromStart chromEnd\n')
@@ -279,11 +279,27 @@ def calculate_3D_score(
             
             #array_score_product = np.round(array_read_depth/avg_RD) * (array_var_density/avg_VD+0.1) * (array_dip_density/avg_ND+0.1)
             #array_score_product = np.where(array_score_product > 30, 30, array_score_product)
-
+            """
             array_score_sum = np.round(array_read_depth/avg_RD) + (array_var_density/avg_VD) + (array_dip_density/avg_ND)
             array_score_sum = np.where(array_read_depth > avg_RD/2, array_score_sum, 0)
+            """
+            array_Z_score_RD = (array_read_depth-avg_RD)/std_RD - 1
+            array_Z_score_RD = np.where(array_Z_score_RD > 0, array_Z_score_RD, 0)
+            array_Z_score_VD = (array_var_density-avg_VD)/std_VD
+            array_Z_score_VD = np.where(array_Z_score_VD > 0, array_Z_score_VD, 0)
+            array_Z_score_ND = (array_dip_density-avg_ND)/std_ND
+            array_Z_score_ND = np.where(array_Z_score_ND > 0, array_Z_score_ND, 0)
+            array_score_sum  = array_Z_score_RD + array_Z_score_VD + array_Z_score_ND
+            #array_score_sum = (array_read_depth-avg_RD)/std_RD
+            #array_score_sum = (array_var_density-avg_VD)/std_VD
+            #array_score_sum = (array_dip_density-avg_ND)/std_ND
+            #array_score_sum = array_read_depth/avg_RD
+            #array_score_sum = array_var_density/avg_VD
+
+            #array_score_sum = np.where(array_score_sum > 0, array_score_sum, 0)
             #array_score_sum = np.where(array_score_sum > 30, 30, array_score_sum)
-            link_bias_region_and_report(array_score_sum, region_begin, ref_name, f_ob, f_os)
+            #link_bias_region_and_report(array_score_sum, region_begin, ref_name, f_ob, f_os)
+            link_bias_region_and_report(array_score_sum, region_begin, ref_name, f_ob, f_os,2,3,1000)
             dict_3D_measures[ref_name][region_begin].append(array_score_sum)
     f_ob.close()
     f_os.close()
@@ -291,7 +307,7 @@ def calculate_3D_score(
 
 def get_baseline(
         fn_baseline :str
-    ) -> tuple:
+    ) -> list:
     """
     Take and parse the last line of fn_baseline
     """
@@ -299,8 +315,8 @@ def get_baseline(
     for line in f:
         pass
     f.close()
-    _, avg_RD, _,avg_VD, _, avg_ND, _ = line.split()
-    return float(avg_RD), float(avg_VD), float(avg_ND)
+    _, avg_RD, std_RD, avg_VD, std_VD, avg_ND, std_ND = line.split()
+    return [float(avg_RD), float(std_RD), float(avg_VD), float(std_VD), float(avg_ND), float(std_ND)]
 
 
 def calculate_avg(
@@ -318,7 +334,8 @@ def calculate_avg(
             total_read_depth  = np.concatenate((total_read_depth , array_read_depth))
             total_var_density = np.concatenate((total_var_density, positive_var))
             total_dip_density = np.concatenate((total_dip_density, positive_dip))
-    return np.mean(total_read_depth), np.mean(total_var_density), np.mean(total_dip_density)
+    return [np.mean(total_read_depth), np.std(total_read_depth), np.mean(total_var_density), \
+            np.std(total_var_density), np.mean(total_dip_density), np.std(total_dip_density)]
 
 
 
@@ -328,7 +345,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-g', '--gvcf_file', help='the gvcf file of a specific region')
     parser.add_argument('-w', '--window_size', help='window size for average depth, density analysis', type=int, default=400)
-    parser.add_argument('-rd', '--read_depth', help='the average sequence read depth', type=int, default=30)
+    parser.add_argument('-rd', '--read_depth', help='the average sequence read depth')
     parser.add_argument('-b', '--baseline', help='the baseline report generate by sample_baseline.py')
     parser.add_argument('-o',  '--out_report', help='scanning bed file and reports')
     parser.add_argument('-wig', '--out_wig', help='flag for wig output', action='store_true')
@@ -362,14 +379,15 @@ if __name__ == "__main__":
     
     # Load or calculate the baseline of the measures
     if fn_baseline:
-        avg_RD, avg_VD, avg_ND = get_baseline(fn_baseline)
+        # avg_RD, std_RD, avg_VD, std_VD, avg_ND, std_ND
+        list_statistics = get_baseline(fn_baseline)
     else:
-        avg_RD, avg_VD, avg_ND = calculate_avg(dict_3D_measures)
+        list_statistics = calculate_avg(dict_3D_measures)
     if rd_thresh:
-        avg_RD = rd_thresh
+        list_statistics[0] = rd_thresh
 
     print("Calculate 3D scoring and output bed...")
-    calculate_3D_score(dict_3D_measures, fn_out_report, avg_RD, avg_VD, avg_ND)
+    calculate_3D_score(dict_3D_measures, fn_out_report, list_statistics)
 
     if flag_wig: # output wig files if -ow option
         print("Output wig format...")
