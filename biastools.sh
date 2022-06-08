@@ -19,8 +19,8 @@ samtools index hapA.sorted.bam
 samtools index hapB.sorted.bam
 
 echo "[BIASTOOLS] Align sequences to the original reference"
-mkdir ./index/
-mkdir ./index/GRCh38_chr21/
+mkdir -p ./index/
+mkdir -p ./index/GRCh38_chr21/
 #bowtie2-build GRCh38_chr21.fa ./index/GRCh38_chr21/chr21_index
 #bowtie2 -p 32 -x ./index/GRCh38_chr21/chr21_index --rg-id hapA --rg SM:NA12878 -1 hapA_1.fq -2 hapA_2.fq -S hapA.bt2.sam
 #bowtie2 -p 32 -x ./index/GRCh38_chr21/chr21_index --rg-id hapB --rg SM:NA12878 -1 hapB_1.fq -2 hapB_2.fq -S hapB.bt2.sam
@@ -59,5 +59,5 @@ echo "[BIASTOOLS] Reference bias analysis"
 #python3 ref_bi.py -s bt2.sorted.het.bam -v chr21_het.vcf.gz -f GRCh38_chr21.fa -o bt.bias
 #python3 ref_bi.py -s octopus.bt2.sorted.het.bam -v chr21_het.vcf.gz -f GRCh38_chr21.fa -o octopus.bt.bias
 python3 ref_bi_matchall.py -s bt2.sorted.het.bam -v chr21_het.vcf.gz -f GRCh38_chr21.fa -o matchall.chr21.bias
-python3 merge_report.py -b matchall.chr21.bias.SNP -g golden_distribution.rpt.SNP -o merge.chr21.bias.SNP
-python3 merge_report.py -b matchall.chr21.bias.gap -g golden_distribution.rpt.gap -o merge.chr21.bias.gap
+python3 merge_report.py -b matchall.chr21.bias.SNP -g golden_distribution_chr21.rpt.SNP -o merge.chr21.bias.SNP
+python3 merge_report.py -b matchall.chr21.bias.gap -g golden_distribution_chr21.rpt.gap -o merge.chr21.bias.gap

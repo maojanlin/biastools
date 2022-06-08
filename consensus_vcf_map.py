@@ -325,7 +325,7 @@ if __name__ == "__main__":
             dict_ref_consensus_map0=dict_ref_consensus_map0,
             dict_ref_consensus_map1=dict_ref_consensus_map1,
             dict_set_conflict_vars=dict_set_conflict_vars,
-            debug=True
+            debug=False
             )
     f_vcf = pysam.VariantFile(fn_vcf)
     print("Start output report...")
