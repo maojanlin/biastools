@@ -360,6 +360,8 @@ def match_to_hap(
         l_bound = r_bound - len(seq_hap)
 
     min_match = 0 # minimum match length
+    #l_min_req = min(l_min_req, len(seq_read)) # make sure the min requirement is shorter than the read
+    #r_min_req = min(r_min_req, len(seq_read))
     if l_bound < 0:
         seq_hap = seq_hap[-l_bound:]
         l_bound = 0
@@ -368,7 +370,7 @@ def match_to_hap(
         seq_hap = seq_hap[:len(seq_read)-r_bound]
         r_bound = len(seq_read)
         if min_match != 0:
-            print("WARNING! Both l_bound and r_bound exceed the read!!")
+            print("WARNING! The read is totally contain in the variant!!", seq_name, "at", var_start)
         min_match = l_min_req # minimum len to cover variant
     if r_bound - l_bound < min_match:
         return -1 # Not cover
@@ -442,7 +444,8 @@ def compare_sam_to_haps(
             match_flag_1 = 0
             # 1. Cohort alignment
             if dict_ref_cohorts[ref_name].get(var.start): # Anchor Left
-                cohort_start, cohort_stop, cohort_seq0, cohort_seq1, lpad_0, lpad_1, rpad_0, rpad_1 = dict_ref_cohorts[ref_name][var.start]
+                cohort_start, cohort_stop, cohort_seq0, cohort_seq1, lpad_0, lpad_1, rpad_0, rpad_1 = dict_ref_cohorts[ref_name][var.start] 
+                                                                                                                        # the left, right min-require covering at least 1bp in var
                 match_flag_0 = match_to_hap(seq_name, pos_start, pos_end, cohort_start, read_seq, cohort_seq0, cigar_tuples, padding, lpad_0+1, rpad_0+1, True)
                 match_flag_1 = match_to_hap(seq_name, pos_start, pos_end, cohort_start, read_seq, cohort_seq1, cigar_tuples, padding, lpad_1+1, rpad_1+1, True)
                 if not ((match_flag_0 == 1 and match_flag_1 != 1) or (match_flag_1 == 1 and  match_flag_0 !=1)): # Anchor Right
@@ -687,7 +690,7 @@ def variant_seq(
                 seq_hap0 = seq_hap0[var_chain-padding:start0 + list_len_hap[0][idx] + padding]
                 seq_hap1 = seq_hap1[var_chain-padding:start1 + list_len_hap[1][idx] + padding]
                 max_cohort_stop = cohort_vars[-1].stop
-                for idy, c_var in enumerate(cohort_vars):
+                for idy, c_var in enumerate(cohort_vars): # the start and end position of each var in the cohort
                     lpad_0 = list_start_hap[0][idy] - (var_chain-padding)
                     lpad_1 = list_start_hap[1][idy] - (var_chain-padding)
                     rpad_0 = len(seq_hap0) - lpad_0 - list_len_hap[0][idy]
