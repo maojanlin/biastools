@@ -387,6 +387,7 @@ def compare_sam_to_haps(
     dict_ref_gaps   :dict,
     dict_ref_cohorts:dict,
     dict_set_conflict_vars: dict, #For Debug only
+    flag_real       :bool,
     padding         :int=5
     ) -> dict:
     """
@@ -514,40 +515,44 @@ def compare_sam_to_haps(
             else:
                 dict_ref_var_bias[ref_name][var.start]['n_var'][3] += 1
             
-            # standard updating of read number and mapping quality
-            if 'hapA' == rg_tag:
+            if flag_real:
                 dict_ref_var_bias[ref_name][var.start]['n_read'][0] += 1
                 dict_ref_var_bias[ref_name][var.start]['map_q'][0]  += mapq
-            elif 'hapB' == rg_tag:
-                dict_ref_var_bias[ref_name][var.start]['n_read'][1] += 1
-                dict_ref_var_bias[ref_name][var.start]['map_q'][1]  += mapq
             else:
-                print("WARNING, there is a read without haplotype information!!")
+                # standard updating of read number and mapping quality
+                if 'hapA' == rg_tag:
+                    dict_ref_var_bias[ref_name][var.start]['n_read'][0] += 1
+                    dict_ref_var_bias[ref_name][var.start]['map_q'][0]  += mapq
+                elif 'hapB' == rg_tag:
+                    dict_ref_var_bias[ref_name][var.start]['n_read'][1] += 1
+                    dict_ref_var_bias[ref_name][var.start]['map_q'][1]  += mapq
+                else:
+                    print("WARNING, there is a read without haplotype information!!")
 
-            # TODO DEBUG PURPOSE!
-            if seq_hap0 != seq_hap1: # only count heterozygous site
-                if (len(var.ref) == 1 and max([len(seq) for seq in var.alts]) == 1):
-                    gap_flag = 0
-                else:
-                    gap_flag = 1
-                if match_flag_0 and match_flag_1:
-                    count_both[gap_flag] += 1
-                elif match_flag_0 == False and match_flag_1 == False:
-                    count_others[gap_flag] += 1
-                elif ('hapA' == rg_tag) and match_flag_0:
-                    count_correct[gap_flag] += 1
-                elif ('hapB' == rg_tag) and match_flag_1:
-                    count_correct[gap_flag] += 1
-                else:
-                    """
-                    if gap_flag == 0:
-                        if dict_errors.get(var.start):
-                            dict_errors[var.start].append((int('hapA' == rg_tag), seq_name))
-                        else:
-                            dict_errors[var.start] = [(int('hapA' == rg_tag), var.start, seq_name)]
-                        #print(int('hapA' == rg_tag), var.start, seq_name)
+                # TODO DEBUG PURPOSE!
+                if seq_hap0 != seq_hap1: # only count heterozygous site
+                    if (len(var.ref) == 1 and max([len(seq) for seq in var.alts]) == 1):
+                        gap_flag = 0
+                    else:
+                        gap_flag = 1
+                    if match_flag_0 and match_flag_1:
+                        count_both[gap_flag] += 1
+                    elif match_flag_0 == False and match_flag_1 == False:
+                        count_others[gap_flag] += 1
+                    elif ('hapA' == rg_tag) and match_flag_0:
+                        count_correct[gap_flag] += 1
+                    elif ('hapB' == rg_tag) and match_flag_1:
+                        count_correct[gap_flag] += 1
+                    else:
                         """
-                    count_error[gap_flag] += 1
+                        if gap_flag == 0:
+                            if dict_errors.get(var.start):
+                                dict_errors[var.start].append((int('hapA' == rg_tag), seq_name))
+                            else:
+                                dict_errors[var.start] = [(int('hapA' == rg_tag), var.start, seq_name)]
+                            #print(int('hapA' == rg_tag), var.start, seq_name)
+                            """
+                        count_error[gap_flag] += 1
     """
     accumulate_error = list(dict_errors.items())
     print(len(accumulate_error))
@@ -722,12 +727,14 @@ if __name__ == "__main__":
     parser.add_argument('-v', '--vcf', help='vcf file')
     parser.add_argument('-s', '--sam', help='sam file')
     parser.add_argument('-f', '--fasta', help='reference fasta file')
+    parser.add_argument('-r', '--real_data', help='turn off hap_information warning for real data', action='store_true')
     parser.add_argument('-o', '--out', help='output file')
     args = parser.parse_args()
     
     fn_vcf = args.vcf
     fn_sam = args.sam
     fn_fasta = args.fasta
+    flag_real = args.real_data
     fn_output = args.out
     
     f_vcf   = pysam.VariantFile(fn_vcf)
@@ -757,6 +764,7 @@ if __name__ == "__main__":
             dict_ref_gaps=dict_ref_gaps,
             dict_ref_cohorts=dict_ref_cohorts,
             dict_set_conflict_vars=dict_set_conflict_vars,
+            flag_real=flag_real,
             padding=padding)
     
     f_vcf   = pysam.VariantFile(fn_vcf)
