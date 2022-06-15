@@ -5,7 +5,7 @@ import numpy as np
 import os
 from subprocess import call
 
-from scanning_bias import scanning_bias 
+from scanning_bias import scanning_bias, calculate_measures 
 
 
 def baseline(
@@ -16,8 +16,9 @@ def baseline(
     """
     Take in the sample mpileup, and output the average read_depth/variant Density/non Diploid portion
     """
-    dict_3D_measures = scanning_bias(
-        f_gvcf=f_mpileup,
+    dict_ref_info = scanning_bias(f_gvcf=f_mpileup)
+    dict_3D_measures = calculate_measures(
+        dict_ref_info=dict_ref_info,
         window_size=window_size
         )
     
@@ -40,15 +41,15 @@ def baseline(
 
             fo.write(ref_name + ' ' + str(start_pos) + ' ' + str(len(array_read_depth)) + ' ')
             fo.write(str(round(avg_read_depth,2))   + ' ' + str(round(std_read_depth,2)) + ' ')
-            positive_var     = array_var_density[array_var_density != 0]
-            #positive_var     = array_var_density
+            #positive_var     = array_var_density[array_var_density != 0]
+            positive_var     = array_var_density
             if len(positive_var) > 0:
                 positive_avg_var = np.mean(positive_var)
                 positive_std_var = np.std(positive_var)
                 fo.write(str(round(positive_avg_var,2)) + ' ' + str(round(positive_std_var,2)) + ' ')
             
-            positive_dip     = array_dip_density[array_var_density != 0]
-            #positive_dip     = array_dip_density
+            #positive_dip     = array_dip_density[array_var_density != 0]
+            positive_dip     = array_dip_density
             if len(positive_dip) > 0:
                 positive_avg_dip = np.mean(positive_dip)
                 positive_std_dip = np.std(positive_dip)
