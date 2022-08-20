@@ -213,6 +213,56 @@ def count_haps(
                 
             dict_ref_var_count[ref_name][var_start] = (count0,count1)
     return dict_ref_var_count
+            
+
+def count_haps_n_report_name(
+        dict_ref_alts   :dict,
+        f_sam0          :pysam.AlignmentFile,
+        f_sam1          :pysam.AlignmentFile,
+        dict_ref_consensus_map0 :dict,
+        dict_ref_consensus_map1 :dict,
+        dict_set_conflict_vars  :dict,
+        padding         :int=50,
+        debug           :bool=False
+        ) -> dict:
+    """
+    Count the number of reads in each golden haplotype sam covering the variants
+    """
+    dict_ref_var_count = {}
+    dict_ref_var_name  = {}
+    for ref_name, dict_vars in dict_ref_alts.items():
+        dict_ref_var_count[ref_name] = {}
+        dict_ref_var_name [ref_name] = {}
+        set_conflict = dict_set_conflict_vars[ref_name]
+        for var_start, hap_seqs in dict_vars.items():
+            if var_start in set_conflict:
+                continue
+            if hap_seqs[2] == hap_seqs[3]: # if the var is homozygous
+                continue
+            hap0_start = dict_ref_consensus_map0[ref_name][var_start]
+            hap0_stop  = hap0_start + len(hap_seqs[0])
+            hap1_start = dict_ref_consensus_map1[ref_name][var_start]
+            hap1_stop  = hap1_start + len(hap_seqs[1])
+            
+            # read numbers overlapping the variants
+            count0 = f_sam0.count(contig=ref_name, start=hap0_start, stop=hap0_stop)
+            count1 = f_sam1.count(contig=ref_name, start=hap1_start, stop=hap1_stop)
+            read_segment0 = f_sam0.fetch(contig=ref_name, start=hap0_start-padding, stop=hap0_stop+padding)
+            name_set0    = set([read.query_name for read in read_segment0])
+            read_segment1 = f_sam1.fetch(contig=ref_name, start=hap1_start-padding, stop=hap1_stop+padding)
+            name_set1    = set([read.query_name for read in read_segment1])
+            if debug:
+                print(ref_name, var_start, ':\n\thapA (' + str(count0) + "): ", end="")
+                for read in f_sam0.fetch(contig=ref_name, start=hap0_start, stop=hap0_stop):
+                    print(read.query_name, end=", ")
+                print("\n\thapB (" + str(count1) + "): ", end="")
+                for read in f_sam1.fetch(contig=ref_name, start=hap1_start, stop=hap1_stop):
+                    print(read.query_name, end=", ")
+                print("\n", end="")
+                
+            dict_ref_var_count[ref_name][var_start] = (count0, count1)
+            dict_ref_var_name [ref_name][var_start] = (name_set0, name_set1, count0, count1)
+    return dict_ref_var_count, dict_ref_var_name
 
 
 def output_report(
@@ -238,11 +288,11 @@ def output_report(
             count0, count1 = dict_ref_var_count[ref_name][var.start]
             len_var = 0
             if hap_0 == 0:
-                read_distribution = count0/(count0+count1)
+                read_distribution = count0/max((count0+count1),0.001)
                 distring = format(read_distribution, '.8f') + '\t' + str(count0) + '\t' + str(count1)
                 len_var = len(var.alts[hap_1-1])
             else:
-                read_distribution = count1/(count0+count1)
+                read_distribution = count1/max((count0+count1),0.001)
                 distring = format(read_distribution, '.8f') + '\t' + str(count1) + '\t' + str(count0)
                 len_var = len(var.alts[hap_0-1])
             f_all.write(ref_name + '\t' + str(var.start+1) + '\t' + distring + '\t')
@@ -318,7 +368,7 @@ if __name__ == "__main__":
     print("Checking the simulation sam file covering of the variants")
     f_sam0 = pysam.AlignmentFile(fn_sam0)
     f_sam1 = pysam.AlignmentFile(fn_sam1)
-    dict_ref_var_count = count_haps(
+    dict_ref_var_count, dict_ref_var_name = count_haps_n_report_name(
             dict_ref_alts=dict_ref_alts,
             f_sam0=f_sam0,
             f_sam1=f_sam1,
@@ -333,3 +383,7 @@ if __name__ == "__main__":
             f_vcf=f_vcf,
             dict_ref_var_count=dict_ref_var_count,
             fn_output=fn_output)
+    print("Dump golden read names pickle file...")
+    with open(fn_output + '.pickle', 'wb') as f:
+        pickle.dump(dict_ref_var_name, f)
+
