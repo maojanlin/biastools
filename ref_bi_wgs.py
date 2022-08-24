@@ -526,18 +526,17 @@ def compare_sam_to_haps(
             else:
                 dict_ref_var_bias[ref_name][var.start]['n_var'][3] += 1
             
+            # standard updating of read number and mapping quality
             if flag_real: # no golden information
                 dict_ref_var_bias[ref_name][var.start]['n_read'][0] += 1
                 dict_ref_var_bias[ref_name][var.start]['map_q'][0]  += mapq
             else:
-                # standard updating of read number and mapping quality
-                other_flag = False
                 if ref_name != chr_tag: # not the same chromosome
                     dict_ref_var_bias[ref_name][var.start]['n_read'][2] += 1
                     dict_ref_var_bias[ref_name][var.start]['map_q'][2] += 1
+                elif dict_ref_var_name[ref_name].get(var.start) == None:
+                    continue
                 elif 'hapA' == hap_tag: # hapA
-                    if dict_ref_var_name[ref_name].get(var.start) == None:
-                        continue
                     if seq_name in dict_ref_var_name[ref_name][var.start][0]: # check if the read name is in the golden set
                         dict_ref_var_bias[ref_name][var.start]['n_read'][0] += 1
                         dict_ref_var_bias[ref_name][var.start]['map_q'][0]  += mapq
@@ -545,8 +544,6 @@ def compare_sam_to_haps(
                         dict_ref_var_bias[ref_name][var.start]['n_read'][2] += 1
                         dict_ref_var_bias[ref_name][var.start]['map_q'][2] += 1
                 elif 'hapB' == hap_tag: # hapB
-                    if dict_ref_var_name[ref_name].get(var.start) == None:
-                        continue
                     if seq_name in dict_ref_var_name[ref_name][var.start][1]: # check if the read name is in the golden set
                         dict_ref_var_bias[ref_name][var.start]['n_read'][1] += 1
                         dict_ref_var_bias[ref_name][var.start]['map_q'][1]  += mapq

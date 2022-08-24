@@ -6,104 +6,8 @@ from os import path
 import pysam
 import numpy as np
 from scipy.stats import chisquare
+from ref_bi_wgs import output_report, get_division
 
-
-def fetch_alt_seqs(
-        var:pysam.VariantRecord,
-        ref:str
-        )-> list:
-    """
-    Inputs: 
-        - variant
-        - reference sequence
-    Ouput:
-        - list of alternatives sequences
-    """
-    list_alt_seqs = []
-    for idx, alt in enumerate(var.alts):
-        var_seq = ref[:var.start] + alt + ref[var.stop:]
-        list_alt_seqs.append(var_seq)
-    return list_alt_seqs
-
-
-def parse_MD(md_tag):
-    list_string = re.split('(\d+)', md_tag)
-    list_chunk = []
-    for ele in list_string:
-        if ele.isdigit():
-            list_chunk.append(('M', int(ele)))
-        elif ele == "":
-            continue
-        elif ele[0] == '^':
-            list_chunk.append(('D', ele[1:]))
-        else:
-            list_chunk.append(('m', ele))
-    return list_chunk
-
-
-
-def map_read_to_ref(
-    read_start   :int,
-    read_end     :int,
-    cigar_tuples :list
-    ) -> dict:
-    """
-    return the mapping of ref->read position
-    """
-    dict_read_map = {}
-    ref_curser  = read_start
-    read_curser = 0
-    for pair_info in cigar_tuples:
-        code, runs = pair_info
-        if code == 0 or code == 7 or code == 8: # M or = or X
-            for pos in range(ref_curser, ref_curser + runs):
-                dict_read_map[pos] = read_curser
-                read_curser += 1
-            ref_curser += runs
-        elif code == 1: # I
-            dict_read_map[ref_curser] = read_curser
-            ref_curser  += 1
-            read_curser += runs
-        elif code == 2: # D
-            for pos in range(ref_curser, ref_curser + runs):
-                dict_read_map[pos] = read_curser
-            read_curser += 1
-            ref_curser += runs
-        elif code == 4 or code == 5: # S or H, pysam already parsed
-            pass
-        else:
-            print ("ERROR: unexpected cigar code in sequence", query_name)
-    return dict_read_map
-
-
-def match_hap(
-        var_start   :int,
-        read_map    :dict,
-        seq_read    :str,
-        seq_hap     :str,
-        padding     :int
-        ) -> bool:
-    """
-    Adjust and compare the two sequences
-    """
-    r_start = read_map[var_start]
-    l_bound = r_start - padding
-    r_bound = l_bound + len(seq_hap)
-    if l_bound < 0:
-        seq_hap = seq_hap[-l_bound:]
-        l_bound = 0
-    if r_bound > len(seq_read):
-        seq_hap = seq_hap[:len(seq_read)-r_bound]
-        r_bound = len(seq_read)
-    if seq_read[l_bound:r_bound] == seq_hap:
-        return True
-    else:
-        return False
-
-
-"""
-functions above are obsolete
-"""
 
 def chi_square_test(
         var_start:      int,
@@ -151,74 +55,6 @@ def interval_variance(
         var += (interval - mean_interval)*(interval - mean_interval)
     var = var/len(list_interval)
     return var
-
-
-
-def output_report(
-        f_vcf                   :pysam.VariantFile,
-        dict_ref_bias           :dict,
-        dict_set_conflict_vars  :dict,
-        fn_output               :str
-        ) -> None:
-    """
-    Output the reference bias report to three different files:
-        - f_all: containing all the variants
-        - f_gap: contains only insertions and deletions
-        - f_SNP: contains only SNPs
-    """
-    f_all = open(fn_output, 'w')
-    f_gap = open(fn_output + '.gap', 'w')
-    f_SNP = open(fn_output + '.SNP', 'w')
-    f_all.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tBOTH_COUNT\tNEITHER_COUNT\tNUM_READS\tSUM_MAPQ\tEVEN_P_VALUE\tREAD_DISTRIBUTION\tGAP\n")
-    f_gap.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tBOTH_COUNT\tNEITHER_COUNT\tNUM_READS\tSUM_MAPQ\tEVEN_P_VALUE\tREAD_DISTRIBUTION\n")
-    f_SNP.write("CHR\tHET_SITE\tREFERENCE_BIAS\tREF_COUNT\tALT_COUNT\tBOTH_COUNT\tNEITHER_COUNT\tNUM_READS\tSUM_MAPQ\tEVEN_P_VALUE\tREAD_DISTRIBUTION\n")
-    for var in f_vcf:
-        ref_name = var.contig
-        hap = var.samples[0]['GT']
-        # Filtering all the homozygous alleles or the alleles without reference
-        if (hap[0] != 0 and hap[1] != 0) or (hap[0] == 0 and hap[1] == 0):
-            continue
-        if hap[0] == 0:
-            idx_ref, idx_alt = 0, 1
-        else:
-            idx_ref, idx_alt = 1, 0
-        # Filtering the conflict vars
-        if var.start in dict_set_conflict_vars[ref_name]:
-            continue
-        n_read = dict_ref_bias[ref_name][var.start]['n_read']
-        n_var  = dict_ref_bias[ref_name][var.start]['n_var']
-        map_q  = dict_ref_bias[ref_name][var.start]['map_q']
-        #p_value = interval_variance(var.start, dict_ref_bias[ref_name][var.start]['distribute'])
-        p_value = chi_square_test(var.start, dict_ref_bias[ref_name][var.start]['distribute'][idx_alt])
-        if p_value: # p_value is not None
-            p_value = min(p_value, chi_square_test(var.start, dict_ref_bias[ref_name][var.start]['distribute'][idx_ref]))
-        output_string = (ref_name + '\t' + str(var.start+1) + '\t')
-        # n_var[0,1,2,3] = hap0, hap1, both, others
-        if sum(n_var[:2]) == 0:
-            output_string += ("N/A")
-        else:
-            #output_string += (format((n_var[idx_ref]+0.5*n_var[2]) / float(sum(n_var[:3])), '.8f'))
-            output_string += (format((n_var[idx_ref]) / float(sum(n_var[:2])), '.8f'))
-        output_string += ("\t" + str(n_var[idx_ref]) + "\t" + str(n_var[idx_alt]) + "\t" + str(n_var[2]) +"\t" + str(n_var[3]) + "\t" + str(sum(n_read)) + "\t" + str(sum(map_q)) + "\t")
-        if p_value == None:
-            output_string += ("0") + '\t'
-        else:
-            output_string += (format(p_value, '.8f')) + '\t'
-        if sum(n_read) == 0:
-            output_string += ("N/A")
-        else:
-            output_string += (format(n_read[idx_ref] / float(sum(n_read)), '.8f'))
-
-        if len(var.ref) ==  len(var.alts[ hap[idx_alt] - 1]): # length of ref is equal to length of 
-            f_all.write(output_string + '\t' + '\n')
-            f_SNP.write(output_string + '\n')
-        else:
-            f_all.write(output_string + '\t' + '.\n')
-            f_gap.write(output_string + '\n')
-    
-    f_all.close()
-    f_gap.close()
-    f_SNP.close()
 
 
 def hap_inside(
@@ -382,19 +218,25 @@ def compare_sam_to_haps(
     f_vcf           :pysam.VariantFile,
     f_sam           :pysam.AlignmentFile,
     dict_ref_alts   :dict,
-    dict_set_conflict_vars: dict
+    dict_set_conflict_vars: dict,
+    flag_real       :bool,
+    fn_golden       :str
     ) -> dict:
     """
     Input:  f_sam file
     Output: ref bias dictionary according to variants
     """
+    if flag_real != True:
+        with open(fn_golden, "rb") as f:
+            dict_ref_var_name = pickle.load(f)
+    
     # build up the ref bias dictionary
     dict_ref_var_bias = {}
     for ref_name in dict_ref_alts.keys():
         dict_ref_var_bias[ref_name] = {}
         for start_pos in dict_ref_alts[ref_name]:
             # n_var has hap0, hap1, both, and others
-            dict_ref_var_bias[ref_name][start_pos] = {'n_read':[0,0], 'n_var':[0,0,0,0], 'map_q':[0,0], 'distribute':[[],[],[],[]]}
+            dict_ref_var_bias[ref_name][start_pos] = {'n_read':[0,0,0], 'n_var':[0,0,0,0], 'map_q':[0,0,0], 'distribute':[[],[],[],[]]}
     
     # parameters for pipeline design
     count_others  = [0,0]
@@ -418,6 +260,7 @@ def compare_sam_to_haps(
         rg_tag       = segment.get_tag("RG")
         read_seq     = segment.query_alignment_sequence # aligned sequence without SoftClip part
         
+        chr_tag, hap_tag = rg_tag.split('_')
         related_vars = list(f_vcf.fetch(ref_name, pos_start, pos_end)) # list of pysam.variant
         #fetching the sequence in the read_seq regarding to the variant
         for var in related_vars:
@@ -477,36 +320,32 @@ def compare_sam_to_haps(
                 dict_ref_var_bias[ref_name][var.start]['n_var'][3] += 1
             
             # standard updating of read number and mapping quality
-            if 'hapA' == rg_tag:
+            if flag_real: # no golden information
                 dict_ref_var_bias[ref_name][var.start]['n_read'][0] += 1
                 dict_ref_var_bias[ref_name][var.start]['map_q'][0]  += mapq
-            elif 'hapB' == rg_tag:
-                dict_ref_var_bias[ref_name][var.start]['n_read'][1] += 1
-                dict_ref_var_bias[ref_name][var.start]['map_q'][1]  += mapq
             else:
-                print("WARNING, there is a read without haplotype information!!")
+                if ref_name != chr_tag: # not the same chromosome
+                    dict_ref_var_bias[ref_name][var.start]['n_read'][2] += 1
+                    dict_ref_var_bias[ref_name][var.start]['map_q'][2] += 1
+                elif dict_ref_var_name[ref_name].get(var.start) == None:
+                    continue
+                elif 'hapA' == hap_tag: # hapA
+                    if seq_name in dict_ref_var_name[ref_name][var.start][0]: # check if the read name is in the golden set
+                        dict_ref_var_bias[ref_name][var.start]['n_read'][0] += 1
+                        dict_ref_var_bias[ref_name][var.start]['map_q'][0]  += mapq
+                    else:
+                        dict_ref_var_bias[ref_name][var.start]['n_read'][2] += 1
+                        dict_ref_var_bias[ref_name][var.start]['map_q'][2] += 1
+                elif 'hapB' == hap_tag: # hapB
+                    if seq_name in dict_ref_var_name[ref_name][var.start][1]: # check if the read name is in the golden set
+                        dict_ref_var_bias[ref_name][var.start]['n_read'][1] += 1
+                        dict_ref_var_bias[ref_name][var.start]['map_q'][1]  += mapq
+                    else:
+                        dict_ref_var_bias[ref_name][var.start]['n_read'][2] += 1
+                        dict_ref_var_bias[ref_name][var.start]['map_q'][2] += 1
+                else:
+                    print("WARNING, there is a read without haplotype information!!")
 
-            # TODO DEBUG PURPOSE!
-            if seq_hap0 != seq_hap1: # only count heterozygous site
-                if (len(var.ref) == 1 and max([len(seq) for seq in var.alts]) == 1):
-                    gap_flag = 0
-                else:
-                    gap_flag = 1
-                if match_flag_0 and match_flag_1:
-                    count_both[gap_flag] += 1
-                elif match_flag_0 == False and match_flag_1 == False:
-                    count_others[gap_flag] += 1
-                elif ('hapA' == rg_tag) and match_flag_0:
-                    count_correct[gap_flag] += 1
-                elif ('hapB' == rg_tag) and match_flag_1:
-                    count_correct[gap_flag] += 1
-                else:
-                    count_error[gap_flag] += 1
-    
-    print("count correct:", count_correct)
-    print("count error:", count_error)
-    print("count both:", count_both)
-    print("count others:", count_others)
     return dict_ref_var_bias
 
 
@@ -577,12 +416,16 @@ if __name__ == "__main__":
     parser.add_argument('-v', '--vcf', help='vcf file')
     parser.add_argument('-s', '--sam', help='sam file')
     parser.add_argument('-f', '--fasta', help='reference fasta file')
+    parser.add_argument('-r', '--real_data', help='turn off hap_information warning for real data', action='store_true')
+    parser.add_argument('-p', '--golden_pickle', help='the pickle file contain the golden information for report reference')
     parser.add_argument('-o', '--out', help='output file')
     args = parser.parse_args()
     
     fn_vcf = args.vcf
     fn_sam = args.sam
     fn_fasta = args.fasta
+    flag_real = args.real_data
+    fn_golden = args.golden_pickle
     fn_output = args.out
     
     f_vcf   = pysam.VariantFile(fn_vcf)
@@ -605,7 +448,9 @@ if __name__ == "__main__":
             f_vcf=f_vcf,
             f_sam=f_sam,
             dict_ref_alts=dict_ref_alts,
-            dict_set_conflict_vars=dict_set_conflict_vars
+            dict_set_conflict_vars=dict_set_conflict_vars,
+            flag_real=flag_real,
+            fn_golden=fn_golden
             )
     f_vcf   = pysam.VariantFile(fn_vcf)
     print("Start output report...")
@@ -613,6 +458,8 @@ if __name__ == "__main__":
             f_vcf=f_vcf,
             dict_ref_bias=dict_ref_bias,
             dict_set_conflict_vars=dict_set_conflict_vars, 
+            flag_real=flag_real,
+            fn_golden=fn_golden,
             fn_output=fn_output
             )
 
