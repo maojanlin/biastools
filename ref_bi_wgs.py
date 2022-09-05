@@ -449,7 +449,7 @@ def compare_sam_to_haps(
         
         chr_tag, hap_tag = rg_tag.split('_')
         related_vars = list(f_vcf.fetch(ref_name, pos_start, pos_end)) # list of pysam.variant
-        if len(related_vars) > 0: # extend the related_cars if there are cohort in the boundary
+        if len(related_vars) > 0: # extend the related_vars if there are cohort in the boundary
             new_start = pos_start
             new_end   = pos_end
             if dict_ref_cohorts[ref_name].get(related_vars[0].start):
@@ -477,7 +477,7 @@ def compare_sam_to_haps(
                 if not ((match_flag_0 == 1 and match_flag_1 != 1) or (match_flag_1 == 1 and  match_flag_0 !=1)): # Anchor Right
                     match_flag_0 = match_to_hap(seq_name, pos_start, pos_end, cohort_stop, read_seq, cohort_seq0, cigar_tuples, padding, lpad_0+1, rpad_0+1, False)
                     match_flag_1 = match_to_hap(seq_name, pos_start, pos_end, cohort_stop, read_seq, cohort_seq1, cigar_tuples, padding, lpad_1+1, rpad_1+1, False)
-                if match_flag_0 == 1 and match_flag_1 == 1:
+                if match_flag_0 == 1 and match_flag_1 == 1: # BOTH cases, determine by if there are indels in local alignment
                     if dict_ref_gaps[ref_name].get(var.start):
                         diff_hap0, diff_hap1 = dict_ref_gaps[ref_name][var.start]
                         diff_read = return_locate_cigar(
@@ -497,17 +497,18 @@ def compare_sam_to_haps(
                 if not ((match_flag_0 == 1 and match_flag_1 != 1) or (match_flag_1 == 1 and  match_flag_0 !=1)): # Anchor Right
                     match_flag_0 = match_to_hap(seq_name, pos_start, pos_end, var.stop, read_seq, seq_hap0, cigar_tuples, padding, padding+1, padding+1, False)
                     match_flag_1 = match_to_hap(seq_name, pos_start, pos_end, var.stop, read_seq, seq_hap1, cigar_tuples, padding, padding+1, padding+1, False)
-                if dict_ref_gaps[ref_name].get(var.start):
-                    diff_hap0, diff_hap1 = dict_ref_gaps[ref_name][var.start]
-                    diff_read = return_locate_cigar(
+                if match_flag_0 == 1 and match_flag_1 == 1: # BOTH cases, determine by if there are indels in local alignment
+                    if  dict_ref_gaps[ref_name].get(var.start):
+                        diff_hap0, diff_hap1 = dict_ref_gaps[ref_name][var.start]
+                        diff_read = return_locate_cigar(
                             read_start=pos_start, 
                             target_pos=var.start, 
                             cigar_tuples=cigar_tuples
                             )
-                    if diff_read == diff_hap0 and diff_read != diff_hap1:
-                        match_flag_1 = 0
-                    elif diff_read != diff_hap0 and diff_read == diff_hap1:
-                        match_flag_0 = 0
+                        if diff_read == diff_hap0 and diff_read != diff_hap1:
+                            match_flag_1 = 0
+                        elif diff_read != diff_hap0 and diff_read == diff_hap1:
+                            match_flag_0 = 0
             # 5. Assign Values
             if match_flag_0 == -1 and match_flag_1 == -1:
                 continue
