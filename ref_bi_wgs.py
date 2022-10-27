@@ -217,10 +217,10 @@ def output_report(
         output_string = (ref_name + '\t' + str(var.start+1) + '\t')
         output_string += (str(sum(n_read)) + "\t" + get_division(sum(map_q), sum(n_read)) + "\t" + format(p_value, '.4f') + '\t')
         # n_var[0,1,2,3] = hap0, hap1, both, others
-        output_string += get_division(n_var[idx_ref], sum(n_var[:2])) + "\t" + str(n_var[idx_ref]) + "\t" + str(n_var[idx_alt]) +"\t" + str(n_var[3]) + "\t"
+        output_string += get_division(n_var[idx_ref], sum(n_var[:2])) + "\t" + str(n_var[idx_ref]) + "\t" + str(n_var[idx_alt]) +"\t" + str(n_var[3])
         if flag_real != True: # Golden Information
             # mapping balance information
-            output_string += get_division(n_read[idx_ref], sum(n_read[:2])) + '\t' + str(n_read[idx_ref]) + '\t' + str(n_read[idx_alt]) + '\t' + str(n_read[2])  
+            output_string += "\t" + get_division(n_read[idx_ref], sum(n_read[:2])) + '\t' + str(n_read[idx_ref]) + '\t' + str(n_read[idx_alt]) + '\t' + str(n_read[2])  
             read_info = dict_ref_var_name[ref_name][var.start]
             # simulation balance information
             output_string += '\t' + get_division(read_info[idx_ref+2], sum(read_info[2:])) + '\t' + str(read_info[idx_ref+2]) + '\t' + str(read_info[idx_alt+2])  
@@ -447,7 +447,8 @@ def compare_sam_to_haps(
         rg_tag       = segment.get_tag("RG")
         read_seq     = segment.query_alignment_sequence # aligned sequence without SoftClip part
         
-        chr_tag, hap_tag = rg_tag.split('_')
+        if flag_real == False:
+            chr_tag, hap_tag = rg_tag.split('_')
         related_vars = list(f_vcf.fetch(ref_name, pos_start, pos_end)) # list of pysam.variant
         if len(related_vars) > 0: # extend the related_vars if there are cohort in the boundary
             new_start = pos_start
