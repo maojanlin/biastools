@@ -466,7 +466,6 @@ def compare_sam_to_haps(
         for var in related_vars:
             if var.start in dict_set_conflict_vars[ref_name]: # neglecting the conflict variant sites
                 continue
-            seq_hap0, seq_hap1 = dict_ref_haps[ref_name][var.start]
 
             # 1 for match, 0 for unmatch, -1 for not cover
             match_flag_0 = 0
@@ -494,13 +493,13 @@ def compare_sam_to_haps(
                         elif diff_read != diff_hap0 and diff_read == diff_hap1:
                             match_flag_0 = 0
             # 2. Local alignment
-            flag_4 = False
             if match_flag_0 == match_flag_1: # both or others
-                match_flag_0 = match_to_hap(seq_name, pos_start, pos_end, var.start, read_seq, seq_hap0, cigar_tuples, padding, padding+1, padding+1, True)
-                match_flag_1 = match_to_hap(seq_name, pos_start, pos_end, var.start, read_seq, seq_hap1, cigar_tuples, padding, padding+1, padding+1, True)
+                var_start, var_stop, seq_hap0, seq_hap1 = dict_ref_haps[ref_name][var.start]
+                match_flag_0 = match_to_hap(seq_name, pos_start, pos_end, var_start, read_seq, seq_hap0, cigar_tuples, padding, padding+1, padding+1, True)
+                match_flag_1 = match_to_hap(seq_name, pos_start, pos_end, var_start, read_seq, seq_hap1, cigar_tuples, padding, padding+1, padding+1, True)
                 if not ((match_flag_0 == 1 and match_flag_1 != 1) or (match_flag_1 == 1 and  match_flag_0 !=1)): # Anchor Right
-                    match_flag_0 = match_to_hap(seq_name, pos_start, pos_end, var.stop, read_seq, seq_hap0, cigar_tuples, padding, padding+1, padding+1, False)
-                    match_flag_1 = match_to_hap(seq_name, pos_start, pos_end, var.stop, read_seq, seq_hap1, cigar_tuples, padding, padding+1, padding+1, False)
+                    match_flag_0 = match_to_hap(seq_name, pos_start, pos_end, var_stop, read_seq, seq_hap0, cigar_tuples, padding, padding+1, padding+1, False)
+                    match_flag_1 = match_to_hap(seq_name, pos_start, pos_end, var_stop, read_seq, seq_hap1, cigar_tuples, padding, padding+1, padding+1, False)
                 if match_flag_0 == 1 and match_flag_1 == 1: # BOTH cases, determine by if there are indels in local alignment
                     if  dict_ref_gaps[ref_name].get(var.start):
                         diff_hap0, diff_hap1 = dict_ref_gaps[ref_name][var.start]
@@ -598,26 +597,76 @@ def switch_var_seq(
         return ref[:var.start-start] + alt + ref[var.stop-start:], len(var.ref) - len(alt), len(alt)
 
 
+def extend_ref_seq(
+        seq_hap0,
+        seq_hap1,
+        ref_extend_0,
+        ref_extend_1,
+        flag_right=True
+        )-> tuple:
+    """
+    Extend the seq_hap0 and seq_hap1 till they makes a difference
+    """
+    seq_hap0_extend = seq_hap0
+    seq_hap1_extend = seq_hap1
+    assert((seq_hap0_extend in seq_hap1_extend) or (seq_hap1_extend in seq_hap0_extend))
+    len_iterate = min(len(ref_extend_0), len(ref_extend_1))
+    if flag_right: # extend to the right
+        for idx in range(len_iterate):
+            seq_hap0_extend += ref_extend_0[idx]
+            seq_hap1_extend += ref_extend_1[idx]
+            if (seq_hap0_extend in seq_hap1_extend) or (seq_hap1_extend in seq_hap0_extend): # still indistinguishable
+                continue
+            else:
+                return seq_hap0_extend, seq_hap1_extend, idx+1
+    else: # extend to the left
+        for idx in range(len_iterate):
+            seq_hap0_extend = ref_extend_0[-idx-1] + seq_hap0_extend
+            seq_hap1_extend = ref_extend_1[-idx-1] + seq_hap1_extend
+            if (seq_hap0_extend in seq_hap1_extend) or (seq_hap1_extend in seq_hap0_extend): # still indistinguishable
+                continue
+            else:
+                return seq_hap0_extend, seq_hap1_extend, idx+1
+    return seq_hap0_extend, seq_hap1_extend, False
+
+
 def variant_seq(
         f_vcf       :pysam.VariantFile,
         f_fasta     :pysam.FastaFile,
         var_chain   :int=15,
-        padding     :int=5
-        )-> tuple: # dict_set_conflict_vars, dict_var_haps, dict_cohort
+        padding     :int=5,
+        extend_limit:int=50
+        )-> tuple: # dict_set_conflict_vars, dict_var_haps, dict_cohort, dict_ref_haps
     """
-    Output
-        dictionary containing the sequences nearby the variants
+    Output:
+        dict_set_conflict_vars: set containing the conflict variants
+        - keys: ref_name (contig_name)
+        - values: set(variant start positions... )
+        
+        dict_ref_haps: dictionary containing the sequences nearby the variants
         - keys: ref_name
         - values: dict {}
                     - keys: var.start
-                    - values: (seq_hap0, seq_hap1)
-        set containing the conflict variants
-        -values: dict_cohort {}
+                    - values: (tuple)
+                        - var_start_effective # may be different to var.start because of adaptive extension
+                        - var_stop_effective # anchor to the reference
+                        - seq_hap0
+                        - seq_hap1
+        dict_ref_cohorts:
+        - keys: ref_name
+        - values: dict_cohort {}
                     - keys: var.start
                     - values: (tuple)
                         - cohort start # anchor to the referene
-                        - cohort seq 0 # chort seq still got paddings
-                        - cohort seq 1
+                        - cohort seq hap0 # chort seq still got paddings
+                        - cohort seq hap1
+                    # dict_ref_cohorts[ref_name][(c_var.start)] = (var.start, max_cohort_stop, seq_hap0, seq_hap1, lpad_0, lpad_1, rpad_0, rpad_1) # c_var should be the last in cohort
+        dict_ref_gaps:
+        - keys: ref_name
+        -values: dict{}
+                    - keys: var.start
+                    -values: (diff_hap0, diff_hap1) 
+
         - note: not include the variants within the padding distance to conflict variants
     """
     dict_ref_haps = {}
@@ -633,25 +682,93 @@ def variant_seq(
     list_f_vcf = list(f_vcf)
     idx_vcf = 0 # While Loop Management
     while idx_vcf < len(list_f_vcf):
-        var = list_f_vcf[idx_vcf]
+        var = list_f_vcf[idx_vcf] # iterate of the variants
         ref_name = var.contig
+        if var.start > 23620000 and var.start < 23630000:
+            print(var.start)
+        if var.start == 23626302:
+            print("Hello!")
         
-        cohort_vars = list(f_vcf.fetch(var.contig, var.start-var_chain, var.stop+var_chain))
-        if len(cohort_vars) > 1: # the case where variants in the chaining area
+        # We first treat the var as single variant, extend if it is repetitive
+        var_start = var.start - padding
+        var_stop  = var.stop  + padding
+        ref_seq = f_fasta.fetch(reference=ref_name, start= var_start, end = var_stop)
+        hap_0, hap_1 = var.samples[0]['GT']
+        # standard making hap0 and hap1 sequence
+        seq_hap0,diff_hap0,_ = switch_var_seq(var, ref_seq, var_start, hap_0)
+        seq_hap1,diff_hap1,_ = switch_var_seq(var, ref_seq, var_start, hap_1)
+        
+        #TODO extend if hap0 and hap1 is indistinguishable
+        if hap_0 != hap_1: # make sure it is a 0/1 haplotypes
+            if (seq_hap0 in seq_hap1) or (seq_hap1 in seq_hap0):
+                # get additional extend_limit (default 50) bp from the reference
+                ref_extend = f_fasta.fetch(reference=ref_name, start= var_stop, end = var_stop+extend_limit)
+                seq_hap0_extend, seq_hap1_extend, len_extend = extend_ref_seq(seq_hap0, seq_hap1, ref_extend, ref_extend, True)
+                if len_extend: # right extension successful
+                    var_stop = var_stop + len_extend + padding
+                    ref_padding = f_fasta.fetch(reference=ref_name, start= var_stop-padding, end=var_stop)
+                    seq_hap0 = seq_hap0_extend + ref_padding
+                    seq_hap1 = seq_hap1_extend + ref_padding
+                    #print(var_start, seq_hap0_extend, seq_hap1_extend)
+                else: # try left extension
+                    ref_extend = f_fasta.fetch(reference=ref_name, start= var_start-extend_limit, end = var_start)
+                    seq_hap0_extend, seq_hap1_extend, len_extend = extend_ref_seq(seq_hap0, seq_hap1, ref_extend, ref_extend, False)
+                    if len_extend: # left extension successful
+                        var_start = var_start - len_extend - padding
+                        ref_padding = f_fasta.fetch(reference=ref_name, start= var_start, end=var_start+padding)
+                        seq_hap0 = ref_padding + seq_hap0_extend
+                        seq_hap1 = ref_padding + seq_hap1_extend
+                        print(var_start, seq_hap0_extend, seq_hap1_extend)
+                    else:
+                        print("WARNING! Variant at contig:", ref_name, ", pos:", var.start, "exceed repetitive length limit:", extend_limit, ", give up analyzing it." )
+                        dict_set_conflict_vars[ref_name].add(var.start)
+
+        # check if there are nearby variants betweeb var_start to var_stop
+        cohort_vars = list(f_vcf.fetch(ref_name, var_start+padding-var_chain, var_stop-padding+var_chain))
+        if len(cohort_vars) == 1: # single variant within a region
+            if dict_ref_haps[ref_name].get((var.start)):
+                print("WARNING! Duplicate single variant at contig:", ref_name, ", pos:", var.start)
+            if var.start == 23626302:
+                print("Hello! Single variant")
+            dict_ref_haps[ref_name][(var.start)] = (var_start+padding, var_stop-padding, seq_hap0, seq_hap1) # left anchor point and right anchor point
+            if diff_hap0 != 0 or diff_hap1 != 0:
+                dict_ref_gaps[ref_name][var.start] = (diff_hap0, diff_hap1)
+            if var.start > 23620000 and var.start < 23630000:
+                print(idx_vcf, idx_vcf+1)
+            idx_vcf += 1 # While Loop Management
+        else: # the case where multiple variants are in the chaining area
             # Expanding to the chaining variants' chaining area
             cohort_start = min(var.start-var_chain, min([v.start-var_chain for v in cohort_vars]))
             cohort_maxstop = var.stop+var_chain
             for v in cohort_vars:
                 cohort_maxstop = max(cohort_maxstop, max([v.start + len(a) + var_chain for a in v.alleles]))
             # Iterate until there are no variants in the chaining area
-            while cohort_vars != list(f_vcf.fetch(var.contig, cohort_start, cohort_maxstop)):
-                cohort_vars = list(f_vcf.fetch(var.contig, cohort_start, cohort_maxstop))
+            while cohort_vars != list(f_vcf.fetch(ref_name, cohort_start, cohort_maxstop)):
+                cohort_vars = list(f_vcf.fetch(ref_name, cohort_start, cohort_maxstop))
                 cohort_start = min(cohort_start, min([v.start-var_chain for v in cohort_vars]))
                 for v in cohort_vars:
                     cohort_maxstop = max(cohort_maxstop, max([v.start + len(a) + var_chain for a in v.alleles]))
+                # check if the last variant need right extension
+                c_var = cohort_vars[-1]
+                c_var_start = c_var.start - padding
+                c_var_stop  = c_var.stop  + padding
+                ref_seq = f_fasta.fetch(reference=ref_name, start= c_var_start, end = c_var_stop)
+                hap_0, hap_1 = c_var.samples[0]['GT']
+                # standard making hap0 and hap1 sequence
+                c_seq_hap0, *_ = switch_var_seq(c_var, ref_seq, c_var_start, hap_0)
+                c_seq_hap1, *_ = switch_var_seq(c_var, ref_seq, c_var_start, hap_1)
+                if hap_0 != hap_1: # make sure it is a 0/1 haplotypes
+                    if (seq_hap0 in seq_hap1) or (seq_hap1 in seq_hap0):
+                        # get additional extend_limit (default 50) bp from the reference
+                        ref_extend = f_fasta.fetch(reference=ref_name, start= var_stop, end = var_stop+extend_limit)
+                        seq_hap0_extend, seq_hap1_extend, len_extend = extend_ref_seq(seq_hap0, seq_hap1, ref_extend, ref_extend, True)
+                        if len_extend: # right extension successful
+                            cohort_maxstop = c_var_stop + len_extend
+            # End of expansion
 
             # Iterative parameters
-            ref_seq = f_fasta.fetch(reference=var.contig, start= cohort_start, end = cohort_maxstop)
+            # get the whole cohort sequence, and cut each smaller section for dict_ref_haps
+            ref_seq = f_fasta.fetch(reference=ref_name, start=cohort_start, end=cohort_maxstop)
             seq_hap0, seq_hap1 = ref_seq, ref_seq
             adj_hap0, adj_hap1 = cohort_start, cohort_start
             diff_hap0, diff_hap1     =  0,  0
@@ -693,14 +810,55 @@ def variant_seq(
                 if diff_hap0 != 0 or diff_hap1 != 0:
                     dict_ref_gaps[ref_name][c_var.start] = (diff_hap0, diff_hap1)
 
+            # complete the seq_hap0 and seq_hap1, do the assignment of dict_ref_seq
             for idx, c_var in enumerate(cohort_vars):
                 start0 = list_start_hap[0][idx]
                 start1 = list_start_hap[1][idx]
                 seq_0 = seq_hap0[start0 - padding:start0 + list_len_hap[0][idx] + padding]
                 seq_1 = seq_hap1[start1 - padding:start1 + list_len_hap[1][idx] + padding]
+                #TODO extend if hap0 and hap1 is indistinguishable
+                idx_extend = 0
+                len_extend = 0
+                if hap_0 != hap_1: # make sure it is a 0/1 haplotypes
+                    if (seq_0 in seq_1) or (seq_1 in seq_0):
+                        # get additional extend_limit (default 50) bp from the reference
+                        idx_hap0_extend = start0 + list_len_hap[0][idx] + padding
+                        idx_hap1_extend = start1 + list_len_hap[1][idx] + padding
+                        
+                        print("COHORT EXTEND!!--------------------", c_var.start, seq_0, seq_1)#, seq_hap0[idx_hap0_extend:], seq_hap1[idx_hap1_extend])
+                        seq_0, seq_1, len_extend = extend_ref_seq(seq_0, seq_1, seq_hap0[idx_hap0_extend:], seq_hap1[idx_hap1_extend:], True)
+                        if len_extend: # right extension successful
+                            seq_0 += seq_hap0[idx_hap0_extend+len_extend+1:+5]
+                            seq_1 += seq_hap1[idx_hap1_extend+len_extend+1:+5]
+                            print("COHORT EXTEND!!++++++++++++++++++++", c_var.start, seq_0, seq_1, c_var.stop + len_extend + padding)
+                            """
+                        print("COHORT EXTEND!!--------------------", c_var.start, seq_0, seq_1)
+                        idx_hap0_extend = start0 + list_len_hap[0][idx] + padding
+                        idx_hap1_extend = start1 + list_len_hap[1][idx] + padding
+                        flag_extend_success = False
+                        for idx_extend in range(min(len(seq_hap0)-idx_hap0_extend, len(seq_hap1)-idx_hap1_extend)):
+                            seq_0 += seq_hap0[idx_hap0_extend]
+                            seq_1 += seq_hap1[idx_hap1_extend]
+                            idx_hap0_extend += 1
+                            idx_hap1_extend += 1
+                            if (seq_0 not in seq_1) and (seq_1 not in seq_0):
+                                flag_extend_success = True
+                                break
+                        if flag_extend_success:
+                            seq_0 += seq_hap0[idx_hap0_extend+1:+5]
+                            seq_1 += seq_hap1[idx_hap1_extend+1:+5]
+                            print("COHORT EXTEND!!++++++++++++++++++++", c_var.start, seq_0, seq_1, c_var.stop + idx_extend + padding)"""
+                        else:
+                            print("WARNING! Variant at contig:", ref_name, ", pos:", c_var.start, "exceed repetitive length limit:", extend_limit, ", give up analyzing it." )
+                            dict_set_conflict_vars[ref_name].add(c_var.start)
+
                 if dict_ref_haps[ref_name].get((c_var.start)):
-                    print("WARNNING! Duplicate variant at contig:", var.contig, ",pos:", c_var.start)
-                dict_ref_haps[ref_name][(c_var.start)] = (seq_0, seq_1)
+                    print("WARNING! Duplicate cohort variant at contig:", ref_name, ", pos:", c_var.start)
+                    idx_vcf -= 1
+                if var.start == 23626302 or c_var.start == 23626302:
+                    print("Hello! Cohort variant", c_var.start)
+                dict_ref_haps[ref_name][(c_var.start)] = (c_var.start, c_var.stop + idx_extend + padding, seq_0, seq_1)
+                dict_ref_haps[ref_name][(c_var.start)] = (c_var.start, c_var.stop + len_extend + padding, seq_0, seq_1)
             if not conflict_flag: # only generate the cohort if there are no conflict alleles
                 seq_hap0 = seq_hap0[var_chain-padding:start0 + list_len_hap[0][idx] + padding]
                 seq_hap1 = seq_hap1[var_chain-padding:start1 + list_len_hap[1][idx] + padding]
@@ -711,20 +869,9 @@ def variant_seq(
                     rpad_0 = len(seq_hap0) - lpad_0 - list_len_hap[0][idy]
                     rpad_1 = len(seq_hap1) - lpad_1 - list_len_hap[1][idy]
                     dict_ref_cohorts[ref_name][(c_var.start)] = (var.start, max_cohort_stop, seq_hap0, seq_hap1, lpad_0, lpad_1, rpad_0, rpad_1) # c_var should be the last in cohort
+            if var.start > 23620000 and var.start < 23630000:
+                print(idx_vcf, idx_vcf+len(cohort_vars))
             idx_vcf += len(cohort_vars) # While Loop Management
-        else: # single variant
-            var_start = var.start - padding
-            var_stop  = var.stop  + padding
-            ref_seq = f_fasta.fetch(reference=var.contig, start= var_start, end = var_stop)
-            hap_0, hap_1 = var.samples[0]['GT']
-            seq_hap0,diff_hap0,_ = switch_var_seq(var, ref_seq, var_start, hap_0)
-            seq_hap1,diff_hap1,_ = switch_var_seq(var, ref_seq, var_start, hap_1)
-            if dict_ref_haps[ref_name].get((var.start)):
-                print("WARNNING! Duplicate variant at contig:", var.contig, ",pos:", var.start)
-            dict_ref_haps[ref_name][(var.start)] = (seq_hap0, seq_hap1)
-            if diff_hap0 != 0 or diff_hap1 != 0:
-                dict_ref_gaps[ref_name][var.start] = (diff_hap0, diff_hap1)
-            idx_vcf += 1 # While Loop Management
         
     return dict_set_conflict_vars, dict_ref_haps, dict_ref_cohorts, dict_ref_gaps
 
@@ -752,6 +899,7 @@ if __name__ == "__main__":
     f_sam   = pysam.AlignmentFile(fn_sam)
     f_fasta = pysam.FastaFile(fn_fasta)
     #var_chain = 15
+    #TODO THIS TIME WE WILL TRY ADAPTIVE PADDING
     padding = 5
     var_chain = 25
     #padding   = 10
