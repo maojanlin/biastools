@@ -597,6 +597,31 @@ def switch_var_seq(
         return ref[:var.start-start] + alt + ref[var.stop-start:], len(var.ref) - len(alt), len(alt)
 
 
+def left_right_check(seq_hap0, seq_hap1):
+    """
+    Check the extension direction of the repetitiveness
+    return:
+        - 0: right side extension
+        - 1: left side extension
+        - 2: both sides are extensible
+    """
+    assert(seq_hap0 != seq_hap1)
+    assert((seq_hap0 in seq_hap1) or (seq_hap1 in seq_hap0))
+    len_0 = len(seq_hap0)
+    len_1 = len(seq_hap1)
+    if len_0 > len_1:
+        if seq_hap0[:len_1] == seq_hap1:
+            return 0 # right side repetitive
+        elif seq_hap0[-len_1:] == seq_hap1:
+            return 1 # left side repetitive
+    else:
+        if seq_hap1[:len_0] == seq_hap0:
+            return 0 # right side repetitive
+        elif seq_hap1[-len_0:] == seq_hap0:
+            return 1 # left side repetitive
+    return 2 # in the middle
+
+
 def extend_ref_seq(
         seq_hap0,
         seq_hap1,
@@ -630,12 +655,37 @@ def extend_ref_seq(
     return seq_hap0_extend, seq_hap1_extend, False
 
 
+def extend_ref_seq_padding(
+        seq_hap0,
+        seq_hap1,
+        ref_extend_0,
+        ref_extend_1,
+        flag_right=True,
+        padding=5
+        ):
+    """
+    Call the extend_ref_seq and add padding in the end
+    """
+    if flag_right:
+        seq_hap0_extend, seq_hap1_extend, len_extend = extend_ref_seq(seq_hap0, seq_hap1, ref_extend_0[:-padding], ref_extend_1[:-padding], flag_right)
+        if len_extend:
+            return seq_hap0_extend + ref_extend_0[len_extend:len_extend+padding], seq_hap1_extend + ref_extend_1[len_extend:len_extend+padding], len_extend+padding
+        else:
+            return seq_hap0, seq_hap1, False
+    else:
+        seq_hap0_extend, seq_hap1_extend, len_extend = extend_ref_seq(seq_hap0, seq_hap1, ref_extend_0[padding:], ref_extend_1[padding:], flag_right)
+        if len_extend:
+            return ref_extend_0[-len_extend-padding:-len_extend] + seq_hap0_extend, ref_extend_1[-len_extend-padding:-len_extend] + seq_hap1_extend, len_extend+padding
+        else:
+            return seq_hap0, seq_hap1, False
+
+
 def variant_seq(
         f_vcf       :pysam.VariantFile,
         f_fasta     :pysam.FastaFile,
         var_chain   :int=15,
         padding     :int=5,
-        extend_limit:int=50
+        extend_limit:int=70
         )-> tuple: # dict_set_conflict_vars, dict_var_haps, dict_cohort, dict_ref_haps
     """
     Output:
@@ -658,14 +708,18 @@ def variant_seq(
                     - keys: var.start
                     - values: (tuple)
                         - cohort start # anchor to the referene
+                        - cohort stop  # anchor on the other end
                         - cohort seq hap0 # chort seq still got paddings
                         - cohort seq hap1
-                    # dict_ref_cohorts[ref_name][(c_var.start)] = (var.start, max_cohort_stop, seq_hap0, seq_hap1, lpad_0, lpad_1, rpad_0, rpad_1) # c_var should be the last in cohort
+                        - left bound of hap0 # in chort, the read can only be valid only if covering the variant (not the cohort bound)
+                        - left bound of hap1
+                        - right bound of hap0
+                        - right bound of hap0
         dict_ref_gaps:
         - keys: ref_name
         -values: dict{}
                     - keys: var.start
-                    -values: (diff_hap0, diff_hap1) 
+                    - values: (diff_hap0, diff_hap1) 
 
         - note: not include the variants within the padding distance to conflict variants
     """
@@ -684,10 +738,6 @@ def variant_seq(
     while idx_vcf < len(list_f_vcf):
         var = list_f_vcf[idx_vcf] # iterate of the variants
         ref_name = var.contig
-        if var.start > 23620000 and var.start < 23630000:
-            print(var.start)
-        if var.start == 23626302:
-            print("Hello!")
         
         # We first treat the var as single variant, extend if it is repetitive
         var_start = var.start - padding
@@ -701,27 +751,33 @@ def variant_seq(
         #TODO extend if hap0 and hap1 is indistinguishable
         if hap_0 != hap_1: # make sure it is a 0/1 haplotypes
             if (seq_hap0 in seq_hap1) or (seq_hap1 in seq_hap0):
-                # get additional extend_limit (default 50) bp from the reference
-                ref_extend = f_fasta.fetch(reference=ref_name, start= var_stop, end = var_stop+extend_limit)
-                seq_hap0_extend, seq_hap1_extend, len_extend = extend_ref_seq(seq_hap0, seq_hap1, ref_extend, ref_extend, True)
-                if len_extend: # right extension successful
-                    var_stop = var_stop + len_extend + padding
-                    ref_padding = f_fasta.fetch(reference=ref_name, start= var_stop-padding, end=var_stop)
-                    seq_hap0 = seq_hap0_extend + ref_padding
-                    seq_hap1 = seq_hap1_extend + ref_padding
-                    #print(var_start, seq_hap0_extend, seq_hap1_extend)
-                else: # try left extension
-                    ref_extend = f_fasta.fetch(reference=ref_name, start= var_start-extend_limit, end = var_start)
-                    seq_hap0_extend, seq_hap1_extend, len_extend = extend_ref_seq(seq_hap0, seq_hap1, ref_extend, ref_extend, False)
-                    if len_extend: # left extension successful
-                        var_start = var_start - len_extend - padding
-                        ref_padding = f_fasta.fetch(reference=ref_name, start= var_start, end=var_start+padding)
-                        seq_hap0 = ref_padding + seq_hap0_extend
-                        seq_hap1 = ref_padding + seq_hap1_extend
-                        print(var_start, seq_hap0_extend, seq_hap1_extend)
-                    else:
-                        print("WARNING! Variant at contig:", ref_name, ", pos:", var.start, "exceed repetitive length limit:", extend_limit, ", give up analyzing it." )
-                        dict_set_conflict_vars[ref_name].add(var.start)
+                flag_side = left_right_check(seq_hap0, seq_hap1) # check which side the repetitive be
+                if flag_side == 0: # right side
+                    # get additional extend_limit (default 70) bp from the reference
+                    ref_extend = f_fasta.fetch(reference=ref_name, start=var_stop, end=var_stop+extend_limit+padding)
+                    seq_hap0, seq_hap1, len_extend = extend_ref_seq_padding(seq_hap0, seq_hap1, ref_extend, ref_extend, True, padding)
+                    var_stop += len_extend
+                elif flag_side == 1: # left side
+                    ref_extend = f_fasta.fetch(reference=ref_name, start=var_start-extend_limit-padding, end=var_start)
+                    seq_hap0, seq_hap1, len_extend = extend_ref_seq_padding(seq_hap0, seq_hap1, ref_extend, ref_extend, False, padding)
+                    var_start -= len_extend
+                else: # both sides are extensible
+                    r_ref_extend = f_fasta.fetch(reference=ref_name, start=var_stop, end=var_stop+extend_limit+padding)
+                    r_seq_hap0, r_seq_hap1, r_len_extend = extend_ref_seq_padding(seq_hap0, seq_hap1, r_ref_extend, r_ref_extend, True, padding)
+                    l_ref_extend = f_fasta.fetch(reference=ref_name, start=var_start-extend_limit-padding, end=var_start)
+                    l_seq_hap0, l_seq_hap1, l_len_extend = extend_ref_seq_padding(seq_hap0, seq_hap1, l_ref_extend, l_ref_extend, False, padding)
+                    if l_len_extend == 0: # right anyway
+                        seq_hap0, seq_hap1, var_stop = r_seq_hap0, r_seq_hap1, var_stop + r_len_extend
+                    elif r_len_extend == 0: # left anyway
+                        seq_hap0, seq_hap1, var_start = l_seq_hap0, l_seq_hap1, var_start - l_len_extend
+                    elif r_len_extend < l_len_extend: # right is better
+                        seq_hap0, seq_hap1, var_stop = r_seq_hap0, r_seq_hap1, var_stop + r_len_extend
+                    else: # left is better
+                        seq_hap0, seq_hap1, var_start = l_seq_hap0, l_seq_hap1, var_start - l_len_extend
+
+                if len_extend == False:
+                    print("WARNING! Variant at contig:", ref_name, ", pos:", var.start, "exceed repetitive length limit:", extend_limit, ", give up analyzing it." )
+                    dict_set_conflict_vars[ref_name].add(var.start)
 
         # check if there are nearby variants betweeb var_start to var_stop
         cohort_vars = list(f_vcf.fetch(ref_name, var_start+padding-var_chain, var_stop-padding+var_chain))
@@ -759,7 +815,7 @@ def variant_seq(
                 c_seq_hap1, *_ = switch_var_seq(c_var, ref_seq, c_var_start, hap_1)
                 if hap_0 != hap_1: # make sure it is a 0/1 haplotypes
                     if (seq_hap0 in seq_hap1) or (seq_hap1 in seq_hap0):
-                        # get additional extend_limit (default 50) bp from the reference
+                        # get additional extend_limit (default 70) bp from the reference
                         ref_extend = f_fasta.fetch(reference=ref_name, start= var_stop, end = var_stop+extend_limit)
                         seq_hap0_extend, seq_hap1_extend, len_extend = extend_ref_seq(seq_hap0, seq_hap1, ref_extend, ref_extend, True)
                         if len_extend: # right extension successful
@@ -817,37 +873,18 @@ def variant_seq(
                 seq_0 = seq_hap0[start0 - padding:start0 + list_len_hap[0][idx] + padding]
                 seq_1 = seq_hap1[start1 - padding:start1 + list_len_hap[1][idx] + padding]
                 #TODO extend if hap0 and hap1 is indistinguishable
-                idx_extend = 0
                 len_extend = 0
                 if hap_0 != hap_1: # make sure it is a 0/1 haplotypes
                     if (seq_0 in seq_1) or (seq_1 in seq_0):
-                        # get additional extend_limit (default 50) bp from the reference
+                        # get additional extend_limit (default 70) bp from the reference
                         idx_hap0_extend = start0 + list_len_hap[0][idx] + padding
                         idx_hap1_extend = start1 + list_len_hap[1][idx] + padding
-                        
-                        print("COHORT EXTEND!!--------------------", c_var.start, seq_0, seq_1)#, seq_hap0[idx_hap0_extend:], seq_hap1[idx_hap1_extend])
+                        #print("COHORT EXTEND!!--------------------", c_var.start, seq_0, seq_1)#, seq_hap0[idx_hap0_extend:], seq_hap1[idx_hap1_extend])
                         seq_0, seq_1, len_extend = extend_ref_seq(seq_0, seq_1, seq_hap0[idx_hap0_extend:], seq_hap1[idx_hap1_extend:], True)
                         if len_extend: # right extension successful
                             seq_0 += seq_hap0[idx_hap0_extend+len_extend+1:+5]
                             seq_1 += seq_hap1[idx_hap1_extend+len_extend+1:+5]
-                            print("COHORT EXTEND!!++++++++++++++++++++", c_var.start, seq_0, seq_1, c_var.stop + len_extend + padding)
-                            """
-                        print("COHORT EXTEND!!--------------------", c_var.start, seq_0, seq_1)
-                        idx_hap0_extend = start0 + list_len_hap[0][idx] + padding
-                        idx_hap1_extend = start1 + list_len_hap[1][idx] + padding
-                        flag_extend_success = False
-                        for idx_extend in range(min(len(seq_hap0)-idx_hap0_extend, len(seq_hap1)-idx_hap1_extend)):
-                            seq_0 += seq_hap0[idx_hap0_extend]
-                            seq_1 += seq_hap1[idx_hap1_extend]
-                            idx_hap0_extend += 1
-                            idx_hap1_extend += 1
-                            if (seq_0 not in seq_1) and (seq_1 not in seq_0):
-                                flag_extend_success = True
-                                break
-                        if flag_extend_success:
-                            seq_0 += seq_hap0[idx_hap0_extend+1:+5]
-                            seq_1 += seq_hap1[idx_hap1_extend+1:+5]
-                            print("COHORT EXTEND!!++++++++++++++++++++", c_var.start, seq_0, seq_1, c_var.stop + idx_extend + padding)"""
+                            #print("COHORT EXTEND!!++++++++++++++++++++", c_var.start, seq_0, seq_1, c_var.stop + len_extend + padding)
                         else:
                             print("WARNING! Variant at contig:", ref_name, ", pos:", c_var.start, "exceed repetitive length limit:", extend_limit, ", give up analyzing it." )
                             dict_set_conflict_vars[ref_name].add(c_var.start)
@@ -857,7 +894,6 @@ def variant_seq(
                     idx_vcf -= 1
                 if var.start == 23626302 or c_var.start == 23626302:
                     print("Hello! Cohort variant", c_var.start)
-                dict_ref_haps[ref_name][(c_var.start)] = (c_var.start, c_var.stop + idx_extend + padding, seq_0, seq_1)
                 dict_ref_haps[ref_name][(c_var.start)] = (c_var.start, c_var.stop + len_extend + padding, seq_0, seq_1)
             if not conflict_flag: # only generate the cohort if there are no conflict alleles
                 seq_hap0 = seq_hap0[var_chain-padding:start0 + list_len_hap[0][idx] + padding]
