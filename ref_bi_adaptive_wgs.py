@@ -897,12 +897,11 @@ def variant_seq(
                     else: # flag_side == 0 or 2: # right side
                         seq0, seq1, len_extend = extend_ref_seq_padding(seq_0, seq_1, seq_hap0[idx_hap0_extend:], seq_hap1[idx_hap1_extend:], True, padding)
                         c_var_stop += len_extend
-                    if len_extend:
-                        if dict_ref_haps[ref_name].get((c_var.start)):
-                            print("WARNING! Duplicate cohort variant at contig:", ref_name, ", pos:", c_var.start)
-                            idx_vcf -= 1
-                        dict_ref_haps[ref_name][(c_var.start)] = (c_var_start, c_var_stop, seq_0, seq_1)
-                    else:
+                    if dict_ref_haps[ref_name].get((c_var.start)):
+                        print("WARNING! Duplicate cohort variant at contig:", ref_name, ", pos:", c_var.start)
+                        idx_vcf -= 1
+                    dict_ref_haps[ref_name][(c_var.start)] = (c_var_start, c_var_stop, seq_0, seq_1)
+                    if len_extend == False:
                         print("WARNING! Variant at contig:", ref_name, ", pos:", c_var.start, "exceed repetitive length limit:", extend_limit, ", give up analyzing it. (in cohort)" )
                         dict_set_conflict_vars[ref_name].add(c_var.start)
                 else:
