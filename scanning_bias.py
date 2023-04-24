@@ -246,16 +246,20 @@ def link_bias_region_and_report(
     list_bias = []
     list_suspicious = []
     for pos_start, pos_stop in list_region:
-        if max(array_score[pos_start:pos_stop]) > threshold_2:
-            list_bias.append((pos_start + region_begin, pos_stop + region_begin))
+        max_score = max(array_score[pos_start:pos_stop])
+        avg_score = np.mean(array_score[pos_start:pos_stop])
+        if max_score > threshold_2:
+            list_bias.append((pos_start + region_begin, pos_stop + region_begin, max_score, avg_score))
         else:
-            list_suspicious.append((pos_start + region_begin, pos_stop + region_begin))
+            list_suspicious.append((pos_start + region_begin, pos_stop + region_begin, max_score, avg_score))
     if f_ob:
         for segment in list_bias:
-            f_ob.write(ref_name + ' ' + str(segment[0]) + ' ' + str(segment[1]) + ' len_' + str(segment[1]-segment[0]) + '\n')
+            f_ob.write(ref_name + ' ' + str(segment[0]) + ' ' + str(segment[1]) + ' len:' + str(segment[1]-segment[0]) + ',max:' + str(round(segment[2],2)) + ',avg:' + str(round(segment[3],2)) + '\n')
     if f_os:
         for segment in list_suspicious:
-            f_os.write(ref_name + ' ' + str(segment[0]) + ' ' + str(segment[1]) + ' len_' + str(segment[1]-segment[0]) + '\n')
+            f_os.write(ref_name + ' ' + str(segment[0]) + ' ' + str(segment[1]) + ' len:' + str(segment[1]-segment[0]) + ',max:' + str(round(segment[2],2)) + ',avg:' + str(round(segment[3],2)) + '\n')
+    for segment in sorted(list_bias, key=lambda ele: (ele[1]-ele[0])*ele[2]*ele[3], reverse=True)[:5]:
+        print(ref_name + ' ' + str(segment[0]) + ' ' + str(segment[1]) + ' len:' + str(segment[1]-segment[0]) + ',max:' + str(round(segment[2],2)) + ',avg:' + str(round(segment[3],2)))
     return list_bias, list_suspicious
 
 
@@ -299,7 +303,7 @@ def calculate_3D_score(
             #array_score_sum = np.where(array_score_sum > 0, array_score_sum, 0)
             #array_score_sum = np.where(array_score_sum > 30, 30, array_score_sum)
             #link_bias_region_and_report(array_score_sum, region_begin, ref_name, f_ob, f_os)
-            link_bias_region_and_report(array_score_sum, region_begin, ref_name, f_ob, f_os,2,3,1000)
+            link_bias_region_and_report(array_score_sum, region_begin, ref_name, f_ob, f_os,3,5,1000)
             dict_3D_measures[ref_name][region_begin].append(array_score_sum)
     f_ob.close()
     f_os.close()
