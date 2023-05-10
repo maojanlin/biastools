@@ -163,7 +163,8 @@ def interval_variance(
 
 def get_division(num_1, num_2):
     if num_2 == 0:
-        return 'nan'
+        #return 'nan'
+        return format(num_1 / (num_2+0.000001), '.4f')
     else:
         return format(num_1 / num_2, '.4f')
 
@@ -190,13 +191,13 @@ def output_report(
     f_gap = open(fn_output + '.gap', 'w')
     f_SNP = open(fn_output + '.SNP', 'w')
     if flag_real:
-        f_all.write("CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tOTHER\tGAP\n")
-        f_gap.write("CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tOTHER\n")
-        f_SNP.write("CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tOTHER\n")
+        f_all.write("CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tBOTH\tOTHER\tGAP\n")
+        f_gap.write("CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tBOTH\tOTHER\n")
+        f_SNP.write("CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tBOTH\tOTHER\n")
     else:
-        f_all.write("CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tOTHER\tMAP_BALANCE\tMAP_REF\tMAP_ALT\tMIS_MAP\tSIM_BALANCE\tSIM_REF\tSIM_ALT\tGAP\n")
-        f_gap.write("CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tOTHER\tMAP_BALANCE\tMAP_REF\tMAP_ALT\tMIS_MAP\tSIM_BALANCE\tSIM_REF\tSIM_ALT\n")
-        f_SNP.write("CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tOTHER\tMAP_BALANCE\tMAP_REF\tMAP_ALT\tMIS_MAP\tSIM_BALANCE\tSIM_REF\tSIM_ALT\n")
+        f_all.write("CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tBOTH\tOTHER\tMAP_BALANCE\tMAP_REF\tMAP_ALT\tMIS_MAP\tSIM_BALANCE\tSIM_REF\tSIM_ALT\tGAP\n")
+        f_gap.write("CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tBOTH\tOTHER\tMAP_BALANCE\tMAP_REF\tMAP_ALT\tMIS_MAP\tSIM_BALANCE\tSIM_REF\tSIM_ALT\n")
+        f_SNP.write("CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tBOTH\tOTHER\tMAP_BALANCE\tMAP_REF\tMAP_ALT\tMIS_MAP\tSIM_BALANCE\tSIM_REF\tSIM_ALT\n")
     for var in f_vcf:
         ref_name = var.contig
         hap = var.samples[0]['GT']
@@ -218,9 +219,9 @@ def output_report(
         p_value = min(p_value, chi_square_test(var.start, dict_ref_bias[ref_name][var.start]['distribute'][idx_ref]))
 
         output_string = (ref_name + '\t' + str(var.start+1) + '\t')
-        output_string += (str(sum(n_read)) + "\t" + get_division(sum(map_q), sum(n_read)) + "\t" + format(p_value, '.4f') + '\t')
+        output_string += (str(sum(n_read)) + "\t" + get_division(sum(map_q[:2]), sum(n_read[:2])) + "\t" + format(p_value, '.4f') + '\t')
         # n_var[0,1,2,3] = hap0, hap1, both, others
-        output_string += get_division(n_var[idx_ref], sum(n_var[:2])) + "\t" + str(n_var[idx_ref]) + "\t" + str(n_var[idx_alt]) +"\t" + str(n_var[3])
+        output_string += get_division(n_var[idx_ref], sum(n_var[:2])) + "\t" + str(n_var[idx_ref]) + "\t" + str(n_var[idx_alt]) + "\t" + str(n_var[2]) + "\t" + str(n_var[3])
         if flag_real != True: # Golden Information
             # mapping balance information
             output_string += "\t" + get_division(n_read[idx_ref], sum(n_read[:2])) + '\t' + str(n_read[idx_ref]) + '\t' + str(n_read[idx_alt]) + '\t' + str(n_read[2])  
@@ -362,7 +363,6 @@ def match_to_hap(
         return -1
     elif read_end < var_start: # Not cover
         return -1
-    
     # locating the variant site on the read
     r_start = locate_by_cigar(
             read_start=read_start,
@@ -435,7 +435,6 @@ def compare_sam_to_haps(
     count_correct = [0,0]
 
     # scanning all the read alignments
-    dict_errors = {}
     for segment in f_sam:
         flag = segment.flag
         if (flag & 4): # bitwise AND 4, segment unmapped
@@ -456,6 +455,7 @@ def compare_sam_to_haps(
             rg_tag           = segment.get_tag("RG")
             chr_tag, hap_tag = rg_tag.split('_')
         related_vars = list(f_vcf.fetch(ref_name, pos_start, pos_end)) # list of pysam.variant
+        direct_var_start  = set([var.start for var in related_vars ])
         if len(related_vars) > 0: # extend the related_vars if there are cohort in the boundary
             new_start = pos_start
             new_end   = pos_end
@@ -473,49 +473,32 @@ def compare_sam_to_haps(
             # 1 for match, 0 for unmatch, -1 for not cover
             match_flag_0 = 0
             match_flag_1 = 0
+            
             # 1. Cohort alignment
             if dict_ref_cohorts[ref_name].get(var.start): # Anchor Left
                 cohort_start, cohort_stop, cohort_seq0, cohort_seq1, lpad_0, lpad_1, rpad_0, rpad_1 = dict_ref_cohorts[ref_name][var.start] 
                                                                                                                         # the left, right min-require covering at least 1bp in var
-                                                                                                                        # performance better than covering all var
                 match_flag_0 = match_to_hap(seq_name, pos_start, pos_end, cohort_start, read_seq, cohort_seq0, cigar_tuples, padding, lpad_0+1, rpad_0+1, True)
+                if match_flag_0 != 1: # Left doesn't work, anchor Right
+                    match_flag_0 = max(match_flag_0, match_to_hap(seq_name, pos_start, pos_end, cohort_stop, read_seq, cohort_seq0, cigar_tuples, padding, lpad_0+1, rpad_0+1, False))
                 match_flag_1 = match_to_hap(seq_name, pos_start, pos_end, cohort_start, read_seq, cohort_seq1, cigar_tuples, padding, lpad_1+1, rpad_1+1, True)
-                if not ((match_flag_0 == 1 and match_flag_1 != 1) or (match_flag_1 == 1 and  match_flag_0 !=1)): # Anchor Right
-                    match_flag_0 = match_to_hap(seq_name, pos_start, pos_end, cohort_stop, read_seq, cohort_seq0, cigar_tuples, padding, lpad_0+1, rpad_0+1, False)
-                    match_flag_1 = match_to_hap(seq_name, pos_start, pos_end, cohort_stop, read_seq, cohort_seq1, cigar_tuples, padding, lpad_1+1, rpad_1+1, False)
-                if match_flag_0 == 1 and match_flag_1 == 1: # BOTH cases, determine by if there are indels in local alignment
-                    if dict_ref_gaps[ref_name].get(var.start):
-                        diff_hap0, diff_hap1 = dict_ref_gaps[ref_name][var.start]
-                        diff_read = return_locate_cigar(
-                                read_start=pos_start, 
-                                target_pos=var.start, 
-                                cigar_tuples=cigar_tuples
-                                )
-                        if diff_read == diff_hap0 and diff_read != diff_hap1:
-                            match_flag_1 = 0
-                        elif diff_read != diff_hap0 and diff_read == diff_hap1:
-                            match_flag_0 = 0
+                if match_flag_1 != 1: # Left doesn't work, anchor Right
+                    match_flag_1 = max(match_flag_1, match_to_hap(seq_name, pos_start, pos_end, cohort_stop, read_seq, cohort_seq1, cigar_tuples, padding, lpad_1+1, rpad_1+1, False))
+            
             # 2. Local alignment
             if match_flag_0 == match_flag_1: # both or others
                 var_start, var_stop, seq_hap0, seq_hap1 = dict_ref_haps[ref_name][var.start]
                 match_flag_0 = match_to_hap(seq_name, pos_start, pos_end, var_start, read_seq, seq_hap0, cigar_tuples, padding, padding+1, padding+1, True)
+                if match_flag_0 != 1:
+                    match_flag_0 = max(match_flag_0, match_to_hap(seq_name, pos_start, pos_end, var_stop, read_seq, seq_hap0, cigar_tuples, padding, padding+1, padding+1, False))
                 match_flag_1 = match_to_hap(seq_name, pos_start, pos_end, var_start, read_seq, seq_hap1, cigar_tuples, padding, padding+1, padding+1, True)
-                if not ((match_flag_0 == 1 and match_flag_1 != 1) or (match_flag_1 == 1 and  match_flag_0 !=1)): # Anchor Right
-                    match_flag_0 = match_to_hap(seq_name, pos_start, pos_end, var_stop, read_seq, seq_hap0, cigar_tuples, padding, padding+1, padding+1, False)
-                    match_flag_1 = match_to_hap(seq_name, pos_start, pos_end, var_stop, read_seq, seq_hap1, cigar_tuples, padding, padding+1, padding+1, False)
-                if match_flag_0 == 1 and match_flag_1 == 1: # BOTH cases, determine by if there are indels in local alignment
-                    if  dict_ref_gaps[ref_name].get(var.start):
-                        diff_hap0, diff_hap1 = dict_ref_gaps[ref_name][var.start]
-                        diff_read = return_locate_cigar(
-                            read_start=pos_start, 
-                            target_pos=var.start, 
-                            cigar_tuples=cigar_tuples
-                            )
-                        if diff_read == diff_hap0 and diff_read != diff_hap1:
-                            match_flag_1 = 0
-                        elif diff_read != diff_hap0 and diff_read == diff_hap1:
-                            match_flag_0 = 0
-            # 5. Assign Values
+                if match_flag_1 != 1:
+                    match_flag_1 = max(match_flag_1, match_to_hap(seq_name, pos_start, pos_end, var_stop, read_seq, seq_hap1, cigar_tuples, padding, padding+1, padding+1, False))
+            
+            # 3. Assign Values
+            if var.start not in direct_var_start:
+                if not ((match_flag_0 == 1 and match_flag_1 != 1) or (match_flag_1 == 1 and  match_flag_0 !=1)):
+                    continue
             if match_flag_0 == -1 and match_flag_1 == -1:
                 continue
             if match_flag_0 == 1 and match_flag_1 == 1:
@@ -946,11 +929,10 @@ if __name__ == "__main__":
     f_vcf   = pysam.VariantFile(fn_vcf)
     f_sam   = pysam.AlignmentFile(fn_sam)
     f_fasta = pysam.FastaFile(fn_fasta)
-    #var_chain = 15
-    #TODO THIS TIME WE WILL TRY ADAPTIVE PADDING
+    
     padding = 5
     var_chain = 25
-    #padding   = 10
+    
     print("Start building the variant maps...")
     dict_set_conflict_vars, dict_ref_haps, dict_ref_cohorts, dict_ref_gaps = variant_seq(
             f_vcf=f_vcf,
