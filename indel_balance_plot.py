@@ -35,8 +35,8 @@ def calculate_SNP_balance(assign_SNP, flag_real):
     else:
         record = [[],[],[]]
         for idx in range(len(assign_SNP)):
-            record[0].append(float(assign_SNP[idx][13]))
-            record[1].append(float(assign_SNP[idx][9]))
+            record[0].append(float(assign_SNP[idx][14]))
+            record[1].append(float(assign_SNP[idx][10]))
             record[2].append(float(assign_SNP[idx][5]))
     return record
 
@@ -72,9 +72,9 @@ def calculate_gap_balance(assign_gap, f_vcf, len_bd, get_idx):
     return list_insert, list_delete
 
 
-def addlabels(x,y, len_bd):
+def addlabels(x,y):
     for i in range(len(x)):
-        plt.text(i-len_bd, y[i], y[i], ha = 'center')
+        plt.text(i-20, y[i], y[i], ha = 'center')
 
 
 def plot_balance(balance_delete, balance_SNP, balance_insert, output_name, len_bd, list_incidents, list_plot_name):
@@ -87,29 +87,29 @@ def plot_balance(balance_delete, balance_SNP, balance_insert, output_name, len_b
         for idx in range(len_bd):
             list_balance = np.array(list_delete[idx])
             if len(list_balance) > 1:
-                mean = np.mean(list_balance[~np.isnan(list_balance)])
-                balance_list[idy][len_bd-1-idx] = mean
-                balance_1st [idy][len_bd-1-idx] = mean - np.quantile(list_balance[~np.isnan(list_balance)], 0.25)
-                balance_3rd [idy][len_bd-1-idx] = np.quantile(list_balance[~np.isnan(list_balance)], 0.75) - mean
+                median = np.median(list_balance[~np.isnan(list_balance)])
+                balance_list[idy][len_bd-1-idx] = median
+                balance_1st [idy][len_bd-1-idx] = median - np.quantile(list_balance[~np.isnan(list_balance)], 0.25)
+                balance_3rd [idy][len_bd-1-idx] = np.quantile(list_balance[~np.isnan(list_balance)], 0.75) - median
             else:
                 balance_list[idy][len_bd-1-idx] = np.nan
                 balance_1st [idy][len_bd-1-idx] = np.nan
                 balance_3rd [idy][len_bd-1-idx] = np.nan
     
     for idy, list_balance in enumerate(np.array(balance_SNP)):
-        mean = np.mean(list_balance[~np.isnan(list_balance)])
-        balance_list[idy][len_bd] = mean
-        balance_1st [idy][len_bd] = mean - np.quantile(list_balance[~np.isnan(list_balance)], 0.25)
-        balance_3rd [idy][len_bd] = np.quantile(list_balance[~np.isnan(list_balance)], 0.75) - mean
+        median = np.median(list_balance[~np.isnan(list_balance)])
+        balance_list[idy][len_bd] = median
+        balance_1st [idy][len_bd] = median - np.quantile(list_balance[~np.isnan(list_balance)], 0.25)
+        balance_3rd [idy][len_bd] = np.quantile(list_balance[~np.isnan(list_balance)], 0.75) - median
     
     for idy, list_insert in enumerate(balance_insert):
         for idx in range(len_bd):
             list_balance = np.array(list_insert[idx])
             if len(list_balance) > 1:
-                mean = np.mean(list_balance[~np.isnan(list_balance)])
-                balance_list[idy][len_bd+1+idx] = mean
-                balance_1st [idy][len_bd+1+idx] = mean - np.quantile(list_balance[~np.isnan(list_balance)], 0.25)
-                balance_3rd [idy][len_bd+1+idx] = np.quantile(list_balance[~np.isnan(list_balance)], 0.75) - mean
+                median = np.median(list_balance[~np.isnan(list_balance)])
+                balance_list[idy][len_bd+1+idx] = median
+                balance_1st [idy][len_bd+1+idx] = median - np.quantile(list_balance[~np.isnan(list_balance)], 0.25)
+                balance_3rd [idy][len_bd+1+idx] = np.quantile(list_balance[~np.isnan(list_balance)], 0.75) - median
             else:
                 balance_list[idy][idx+len_bd+1] = np.nan
                 balance_1st[idy][idx+len_bd+1] = np.nan
@@ -142,12 +142,12 @@ def plot_balance(balance_delete, balance_SNP, balance_insert, output_name, len_b
     
     a1.set(xlabel='Insertion (+) or deletion (-) length')
     a1.set(ylabel='# of variants')
-    #plt.savefig(output_name + '.indel_balance.pdf')
     a1.bar(t, list_incidents, align='center', width=0.5, log=True)
-    addlabels(t, list_incidents, len_bd)
+    addlabels(t, list_incidents)
     #a1.set_yscale('log')
     a1.grid(axis='y', color='gray', linestyle='dashdot', linewidth=0.6)
-    plt.show()
+    #plt.show()
+    plt.savefig(output_name + '.indel_balance.pdf')
 
 
 if __name__ == "__main__":
@@ -206,13 +206,13 @@ if __name__ == "__main__":
         list_plot_name = ["simulated"]
         if flag_map:
             flag_choice = 1
-            gap_choice  = 9
+            gap_choice  = 10
             list_plot_name += [name + '(map)' for name in list_name]
         else:
             list_plot_name += [name + '(assign)' for name in list_name]
     
         # fetch the gap balance information
-        balance_insert, balance_delete = calculate_gap_balance(list_bias_report[0][1], f_vcf, boundary, 13) # getting the simulated information
+        balance_insert, balance_delete = calculate_gap_balance(list_bias_report[0][1], f_vcf, boundary, 14) # getting the simulated information
         list_balance_delete = [balance_delete]
         list_balance_insert = [balance_insert]
         for assign_SNP, assign_gap in list_bias_report:
