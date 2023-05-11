@@ -6,7 +6,7 @@ from os import path
 import pysam
 import numpy as np
 from scipy.stats import chisquare
-from ref_bi_wgs import output_report, get_division
+from ref_bi_adaptive_wgs import output_report, get_division
 
 
 def chi_square_test(
