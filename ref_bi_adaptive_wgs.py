@@ -163,8 +163,8 @@ def interval_variance(
 
 def get_division(num_1, num_2):
     if num_2 == 0:
-        #return 'nan'
-        return format(num_1 / (num_2+0.000001), '.4f')
+        return 'nan'
+        #return format(num_1 / (num_2+0.000001), '.4f')
     else:
         return format(num_1 / num_2, '.4f')
 
@@ -875,10 +875,10 @@ def variant_seq(
                     #print(c_var_start, seq_0, seq_1, hap_0, hap_1)
                     flag_side = left_right_check(seq_0, seq_1) # check which side the repetitive be
                     if flag_side == 1: # left side only
-                        seq0, seq1, len_extend = extend_ref_seq_padding(seq_0, seq_1, seq_hap0[idx_hap0_extend:], seq_hap1[idx_hap1_extend:], False, padding)
+                        seq_0, seq_1, len_extend = extend_ref_seq_padding(seq_0, seq_1, seq_hap0[idx_hap0_extend:], seq_hap1[idx_hap1_extend:], False, padding)
                         c_var_start -= len_extend
                     else: # flag_side == 0 or 2: # right side
-                        seq0, seq1, len_extend = extend_ref_seq_padding(seq_0, seq_1, seq_hap0[idx_hap0_extend:], seq_hap1[idx_hap1_extend:], True, padding)
+                        seq_0, seq_1, len_extend = extend_ref_seq_padding(seq_0, seq_1, seq_hap0[idx_hap0_extend:], seq_hap1[idx_hap1_extend:], True, padding)
                         c_var_stop += len_extend
                     if dict_ref_haps[ref_name].get((c_var.start)):
                         print("WARNING! Duplicate cohort variant at contig:", ref_name, ", pos:", c_var.start)
@@ -891,17 +891,25 @@ def variant_seq(
                     if dict_ref_haps[ref_name].get((c_var.start)):
                         print("WARNING! Duplicate cohort variant at contig:", ref_name, ", pos:", c_var.start)
                         idx_vcf -= 1
-                    dict_ref_haps[ref_name][(c_var.start)] = (c_var.start, c_var.stop + padding, seq_0, seq_1)
+                    dict_ref_haps[ref_name][(c_var.start)] = (c_var.start, c_var.stop, seq_0, seq_1)
             if not conflict_flag: # only generate the cohort if there are no conflict alleles
-                seq_hap0 = seq_hap0[var_chain-padding:start0 + list_len_hap[0][idx] + padding]
-                seq_hap1 = seq_hap1[var_chain-padding:start1 + list_len_hap[1][idx] + padding]
+                seq_0 = seq_hap0[var_chain-padding:start0 + list_len_hap[0][idx] + padding]
+                seq_1 = seq_hap1[var_chain-padding:start1 + list_len_hap[1][idx] + padding]
                 max_cohort_stop = cohort_vars[-1].stop
+                #if seq_0 != seq_1:
+                #    print(var.start, (seq_0 in seq_1) or (seq_1 in seq_0), seq_0, seq_1)
+
+                if (seq_0 != seq_1) and ((seq_0 in seq_1) or (seq_1 in seq_0)): # make sure it is a 0/1 haplotypes and got repetitive issue
+                    flag_side = left_right_check(seq_0, seq_1) # check which side the repetitive be
+                    if flag_side != 1: # right side or both side only
+                        seq_0, seq_1, len_extend = extend_ref_seq_padding(seq_0, seq_1, seq_hap0[var_chain-padding:], seq_hap1[var_chain-padding:], True, padding)
+                        max_cohort_stop += len_extend
                 for idy, c_var in enumerate(cohort_vars): # the start and end position of each var in the cohort
                     lpad_0 = list_start_hap[0][idy] - (var_chain-padding)
                     lpad_1 = list_start_hap[1][idy] - (var_chain-padding)
-                    rpad_0 = len(seq_hap0) - lpad_0 - list_len_hap[0][idy]
-                    rpad_1 = len(seq_hap1) - lpad_1 - list_len_hap[1][idy]
-                    dict_ref_cohorts[ref_name][(c_var.start)] = (var.start, max_cohort_stop, seq_hap0, seq_hap1, lpad_0, lpad_1, rpad_0, rpad_1) # c_var should be the last in cohort
+                    rpad_0 = len(seq_0) - lpad_0 - list_len_hap[0][idy]
+                    rpad_1 = len(seq_1) - lpad_1 - list_len_hap[1][idy]
+                    dict_ref_cohorts[ref_name][(c_var.start)] = (var.start, max_cohort_stop, seq_0, seq_1, lpad_0, lpad_1, rpad_0, rpad_1) # c_var should be the last in cohort
             idx_vcf += len(cohort_vars) # While Loop Management
         
     return dict_set_conflict_vars, dict_ref_haps, dict_ref_cohorts, dict_ref_gaps
