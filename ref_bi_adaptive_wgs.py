@@ -221,13 +221,14 @@ def output_report(
         output_string = (ref_name + '\t' + str(var.start+1) + '\t')
         output_string += (str(sum(n_read)) + "\t" + get_division(sum(map_q[:2]), sum(n_read[:2])) + "\t" + format(p_value, '.4f') + '\t')
         # n_var[0,1,2,3] = hap0, hap1, both, others
-        output_string += get_division(n_var[idx_ref], sum(n_var[:2])) + "\t" + str(n_var[idx_ref]) + "\t" + str(n_var[idx_alt]) + "\t" + str(n_var[2]) + "\t" + str(n_var[3])
+        output_string += get_division(n_var[idx_ref]+n_var[2]*0.5, sum(n_var[:3])) + "\t" + str(n_var[idx_ref]) + "\t" + str(n_var[idx_alt]) + "\t" + str(n_var[2]) + "\t" + str(n_var[3])
+        #output_string += get_division(n_var[idx_ref], sum(n_var[:2])) + "\t" + str(n_var[idx_ref]) + "\t" + str(n_var[idx_alt]) + "\t" + str(n_var[2]) + "\t" + str(n_var[3])
         if flag_real != True: # Golden Information
             # mapping balance information
             output_string += "\t" + get_division(n_read[idx_ref], sum(n_read[:2])) + '\t' + str(n_read[idx_ref]) + '\t' + str(n_read[idx_alt]) + '\t' + str(n_read[2])  
             read_info = dict_ref_var_name[ref_name][var.start]
             # simulation balance information
-            output_string += '\t' + get_division(read_info[idx_ref+2], sum(read_info[2:])) + '\t' + str(read_info[idx_ref+2]) + '\t' + str(read_info[idx_alt+2])  
+            output_string += '\t' + get_division(read_info[idx_ref+2], sum(read_info[2:4])) + '\t' + str(read_info[idx_ref+2]) + '\t' + str(read_info[idx_alt+2])  
 
         if len(var.ref) ==  len(var.alts[ hap[idx_alt] - 1]): # length of ref is equal to length of 
             f_all.write(output_string + '\t' + '\n')
@@ -442,6 +443,7 @@ def compare_sam_to_haps(
         # aligned read information
         ref_name     = segment.reference_name
         seq_name     = segment.query_name
+        flag_read_n  = segment.is_read2
         pos_start    = segment.reference_start # start position in genome coordiante, need +1 for vcf coordinate
         pos_end      = segment.reference_end
         cigar_tuples = segment.cigartuples
@@ -477,7 +479,6 @@ def compare_sam_to_haps(
             # 1. Cohort alignment
             if dict_ref_cohorts[ref_name].get(var.start): # Anchor Left
                 cohort_start, cohort_stop, cohort_seq0, cohort_seq1, lpad_0, lpad_1, rpad_0, rpad_1 = dict_ref_cohorts[ref_name][var.start] 
-                                                                                                                        # the left, right min-require covering at least 1bp in var
                 match_flag_0 = match_to_hap(seq_name, pos_start, pos_end, cohort_start, read_seq, cohort_seq0, cigar_tuples, padding, lpad_0+1, rpad_0+1, True)
                 if match_flag_0 != 1: # Left doesn't work, anchor Right
                     match_flag_0 = max(match_flag_0, match_to_hap(seq_name, pos_start, pos_end, cohort_stop, read_seq, cohort_seq0, cigar_tuples, padding, lpad_0+1, rpad_0+1, False))
@@ -498,7 +499,11 @@ def compare_sam_to_haps(
             # 3. Assign Values
             if var.start not in direct_var_start:
                 if not ((match_flag_0 == 1 and match_flag_1 != 1) or (match_flag_1 == 1 and  match_flag_0 !=1)):
+                    if var.start == 62109873:
+                        print("*", seq_name, match_flag_0, match_flag_1)
                     continue
+            if var.start == 62109873:
+                print(' ',seq_name, match_flag_0, match_flag_1)
             if match_flag_0 == -1 and match_flag_1 == -1:
                 continue
             if match_flag_0 == 1 and match_flag_1 == 1:
@@ -527,14 +532,28 @@ def compare_sam_to_haps(
                 elif dict_ref_var_name[ref_name].get(var.start) == None:
                     continue
                 elif 'hapA' == hap_tag: # hapA
-                    if seq_name in dict_ref_var_name[ref_name][var.start][0]: # check if the read name is in the golden set
+                    if len(dict_ref_var_name[ref_name][var.start]) == 6 and \
+                       (seq_name, flag_read_n) in dict_ref_var_name[ref_name][var.start][4]: # read is covering the variant but not stretch
+                        dict_ref_var_bias[ref_name][var.start]['map_q'][2] += mapq         
+                        if (match_flag_0 == 1 and match_flag_1 != 1) or (match_flag_0 != 1 and match_flag_1 == 1):
+                            #print("!!!!!!!\t\t", var_start, seq_name, flag_read_n, 'hapA', match_flag_0 == 1)
+                            pass
+                        continue
+                    if (seq_name, flag_read_n) in dict_ref_var_name[ref_name][var.start][0]: # check if the read name is in the golden set
                         dict_ref_var_bias[ref_name][var.start]['n_read'][0] += 1
                         dict_ref_var_bias[ref_name][var.start]['map_q'][0]  += mapq
                     else:
                         dict_ref_var_bias[ref_name][var.start]['n_read'][2] += 1
                         dict_ref_var_bias[ref_name][var.start]['map_q'][2] += 1
                 elif 'hapB' == hap_tag: # hapB
-                    if seq_name in dict_ref_var_name[ref_name][var.start][1]: # check if the read name is in the golden set
+                    if len(dict_ref_var_name[ref_name][var.start]) == 6 and \
+                       (seq_name, flag_read_n) in dict_ref_var_name[ref_name][var.start][5]: # read is covering the variant but not stretch
+                        dict_ref_var_bias[ref_name][var.start]['map_q'][2] += mapq         
+                        if (match_flag_0 == 1 and match_flag_1 != 1) or (match_flag_0 != 1 and match_flag_1 == 1):
+                            #print("!!!!!!!\t\t", var_start, seq_name, flag_read_n, 'hapB', match_flag_1 == 1)
+                            pass
+                        continue
+                    if (seq_name, flag_read_n) in dict_ref_var_name[ref_name][var.start][1]: # check if the read name is in the golden set
                         dict_ref_var_bias[ref_name][var.start]['n_read'][1] += 1
                         dict_ref_var_bias[ref_name][var.start]['map_q'][1]  += mapq
                     else:
@@ -544,6 +563,7 @@ def compare_sam_to_haps(
                     print("WARNING, there is a read without haplotype information!!")
 
                 # TODO DEBUG PURPOSE!
+                """
                 if seq_hap0 != seq_hap1: # only count heterozygous site
                     if (len(var.ref) == 1 and max([len(seq) for seq in var.alts]) == 1):
                         gap_flag = 0
@@ -558,7 +578,7 @@ def compare_sam_to_haps(
                     elif ('hapB' == hap_tag) and match_flag_1:
                         count_correct[gap_flag] += 1
                     else:
-                        count_error[gap_flag] += 1
+                        count_error[gap_flag] += 1"""
     print("count correct:", count_correct)
     print("count error:", count_error)
     print("count both:", count_both)
@@ -902,7 +922,8 @@ def variant_seq(
                 if (seq_0 != seq_1) and ((seq_0 in seq_1) or (seq_1 in seq_0)): # make sure it is a 0/1 haplotypes and got repetitive issue
                     flag_side = left_right_check(seq_0, seq_1) # check which side the repetitive be
                     if flag_side != 1: # right side or both side only
-                        seq_0, seq_1, len_extend = extend_ref_seq_padding(seq_0, seq_1, seq_hap0[var_chain-padding:], seq_hap1[var_chain-padding:], True, padding)
+                        seq_0, seq_1, len_extend = extend_ref_seq_padding(seq_0, seq_1, seq_hap0[start0 + list_len_hap[0][idx] + padding:], \
+                                                                                        seq_hap1[start1 + list_len_hap[1][idx] + padding:], True, padding)
                         max_cohort_stop += len_extend
                 for idy, c_var in enumerate(cohort_vars): # the start and end position of each var in the cohort
                     lpad_0 = list_start_hap[0][idy] - (var_chain-padding)
