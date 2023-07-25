@@ -220,7 +220,8 @@ def compare_sam_to_haps(
     dict_ref_alts   :dict,
     dict_set_conflict_vars: dict,
     flag_real       :bool,
-    fn_golden       :str
+    fn_golden       :str,
+    run_id          :str
     ) -> dict:
     """
     Input:  f_sam file
@@ -324,7 +325,7 @@ def compare_sam_to_haps(
                 dict_ref_var_bias[ref_name][var.start]['n_read'][0] += 1
                 dict_ref_var_bias[ref_name][var.start]['map_q'][0]  += mapq
             else:
-                if ref_name != chr_tag: # not the same chromosome
+                if run_id != None and run_id != chr_tag: # not the same chromosome
                     dict_ref_var_bias[ref_name][var.start]['n_read'][2] += 1
                     dict_ref_var_bias[ref_name][var.start]['map_q'][2] += 1
                 elif dict_ref_var_name[ref_name].get(var.start) == None:
@@ -450,7 +451,8 @@ if __name__ == "__main__":
             dict_ref_alts=dict_ref_alts,
             dict_set_conflict_vars=dict_set_conflict_vars,
             flag_real=flag_real,
-            fn_golden=fn_golden
+            fn_golden=fn_golden,
+            run_id=run_id
             )
     f_vcf   = pysam.VariantFile(fn_vcf)
     print("Start output report...")
