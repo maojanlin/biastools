@@ -72,9 +72,9 @@ def calculate_gap_balance(assign_gap, f_vcf, len_bd, get_idx):
     return list_insert, list_delete
 
 
-def addlabels(x,y):
+def addlabels(x,y,len_bd):
     for i in range(len(x)):
-        plt.text(i-20, y[i], y[i], ha = 'center')
+        plt.text(i-len_bd, y[i], y[i], ha = 'center')
 
 
 def plot_balance(balance_delete, balance_SNP, balance_insert, output_name, len_bd, list_incidents, list_plot_name):
@@ -126,27 +126,25 @@ def plot_balance(balance_delete, balance_SNP, balance_insert, output_name, len_b
     f, (a0, a1) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3,1]})
     f.set_size_inches(15,8)
     #f.figsize = (15,13)
+    prop_cycle = plt.rcParams['axes.prop_cycle']
+    colors = prop_cycle.by_key()['color']
+    #colors = colors[:2] + colors[5:]
+    #colors = colors[1:]
     for idx, name in enumerate(list_plot_name):
-        a0.errorbar(t, (1-balance_list[idx]), yerr=(balance_1st[idx], balance_3rd[idx]), capsize=3, fmt='-o', label=name)
-    """
-    a0.plot(t, [0]*41, label=list_plot_name[0])
-    for idx, name in enumerate(list_plot_name[1:]):
-        idx+=1
-        a0.errorbar(t, (balance_list[idx]), yerr=(balance_1st[idx], balance_3rd[idx]), capsize=3, fmt='-o', label=name)
-    a0.set(ylabel='Number of \"others\" per variant')
-    """
+        a0.errorbar(t, (1-balance_list[idx]), yerr=(balance_1st[idx], balance_3rd[idx]), capsize=3, fmt='-o', label=name, color=colors[idx])
+    
     a0.legend()
-    a0.set_ylim([0.1, 0.7])
+    #a0.set_ylim([0.3, 0.7])
     a0.axhline(y=0.5, color='gray', linestyle='dashdot', linewidth=0.9)
     a0.set(ylabel='Fraction of alternate allele')
     
     a1.set(xlabel='Insertion (+) or deletion (-) length')
     a1.set(ylabel='# of variants')
     a1.bar(t, list_incidents, align='center', width=0.5, log=True)
-    addlabels(t, list_incidents)
+    a1.set_ylim([1, max(list_incidents)*5])
+    addlabels(t, list_incidents, len_bd)
     #a1.set_yscale('log')
     a1.grid(axis='y', color='gray', linestyle='dashdot', linewidth=0.6)
-    #plt.show()
     plt.savefig(output_name + '.indel_balance.pdf')
 
 

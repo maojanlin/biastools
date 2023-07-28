@@ -7,41 +7,6 @@ import math
 import random
 import numpy as np
 
-#============================= STEP 0 DATA INPUT =================================
-#FN_INPUT = 'merge.tribus.bt.bias.gap'
-#f_exclusion = "GCA_000001405.15_GRCh38_GRC_exclusions_T2Tv2.bed"
-#f_e = open(f_exclusion, 'r')
-#dict_exclude = {}
-#for line in f_e:
-#    fields = line.strip().split()
-#    if dict_exclude.get(fields[0]):
-#        dict_exclude[fields[0]] += list(range(int(fields[1]), int(fields[2])))
-#    else:
-#        dict_exclude[fields[0]] = list(range(int(fields[1]), int(fields[2])))
-
-#FN_INPUT = 'merge.compact.bt.bias.SNP'
-#FN_INPUT = 'merge.outrim.all.bt.bias.SNP'
-#FN_INPUT = 'merge.chrX.bias.SNP'
-#FN_INPUT = 'merge.chr21.naive.bias.SNP'
-#FN_INPUT = 'merge.chm13_grch38.chr21.bias.SNP'
-#FN_INPUT = 'merge.chr21.bias.SNP'
-#FN_INPUT = 'merge.refflow-10.chr21.bias.SNP'
-#FN_INPUT = 'merge.major.chr21.bias.SNP'
-#FN_INPUT = 'simulated_hg002/result/merge.chr21.leviosam.bias.SNP'
-#FN_INPUT = 'simulated_hg001/merge.chr21.bias.SNP'
-#FN_INPUT = 'simulated_hg001/merge.chr21.bias.gap'
-##FN_INPUT = 'simulated_hg002/result/merge.chr21.bias.SNP'
-##FN_INPUT = 'simulated_hg002/result/merge.chr22.bias.SNP'
-#FN_INPUT = 'simulated_hg002/result/merge.chr20.bias.SNP'
-#FN_INPUT = 'simulated_hg001/result/merge.chr20.GIAB.bias.SNP'
-#FN_INPUT = 'simulated_hg001/result/merge.chr20.1KGP.bias.SNP'
-#FN_INPUT = 'simulated_hg002/wgs_result/merge.chr20.bias.SNP'
-#FN_INPUT = 'simulated_hg002/wgs_result/merge.chr20_only.bias.SNP'
-#FN_INPUT = 'simulated_hg002/wgs_result/merge.chr20_alt_chr.bias.SNP'
-##FN_INPUT = 'simulated_hg002/wgs_result/merge.chr20_exclude.bias.SNP'
-#FN_INPUT = 'simulated_hg002/wgs_result/simulated.chr20_only.bias.SNP'
-#FN_INPUT = 'simulated_hg002/wgs_result/simulated.wgs.chr20.bias.SNP'
-
 
 colors = ["#bce4ff", "#8bd0fe", "#59bcfc", "#0099fc", "#0086dd", "#006bb1", "#004a7a", "#002740"]
 colors = ["#f2dad5", "#e8bfc1", "#d9a4b2", "#c78ba6", "#aa719a", "#8b5b89", "#634271", "#3c2a4f"]
@@ -94,7 +59,7 @@ def map_num_to_size(num):
         return 0
     elif num <= 3:
         return 1
-    elif num <= 6:
+    elif num <= 5:
         return 2
     elif num <= 10:
         return 3
@@ -112,7 +77,7 @@ def map_waste_to_color(value):
     return int(math.ceil(value*8))
 
 
-def plot_golden(FN_INPUT, df_use):
+def plot_golden(out_prefix, df_use):
     
     # Add columns
     df_use['WASTE_INFO']   = (df_use['OTHER'])/(df_use['NUM_READS']+0.01)
@@ -120,7 +85,7 @@ def plot_golden(FN_INPUT, df_use):
     pValue = list(df_use['EVEN_P_VALUE'])
     
     sp = pd.DataFrame()
-    sp['ALLELIC BALANCE']    = list(df_use['BALANCE'])
+    sp['ASSIGNMENT BALANCE'] = list(df_use['BALANCE'])
     sp['MAPPING BALANCE']    = list(df_use['MAP_BALANCE'])
     sp['SIMULATION BALANCE'] = list(df_use['SIM_BALANCE'])
     sp.head()
@@ -149,15 +114,15 @@ def plot_golden(FN_INPUT, df_use):
     #=========================== standard ref_bias to read_distribute plot ============================
     print("Ploting the Standard Ref Bias Plot!")
     plt.clf()
-    ax = sns.scatterplot(y="ALLELIC BALANCE", x="MAPPING BALANCE",  hue = "Avg_MapQ_code", data = sp, palette=sns.color_palette(color_mapQ))#hue="size", size="size", data=tips)
-    #ax = sns.scatterplot(y="ALLELIC BALANCE", x="MAPPING BALANCE",  hue = "Even_p_value", data = sp)#hue="size", size="size", data=tips)
-    #ax = sns.scatterplot(y="ALLELIC BALANCE", x="MAPPING BALANCE",  hue = "Waste_value", data = sp)#hue="size", size="size", data=tips)
+    ax = sns.scatterplot(y="ASSIGNMENT BALANCE", x="MAPPING BALANCE",  hue = "Avg_MapQ_code", data = sp, palette=sns.color_palette(color_mapQ))
+    #ax = sns.scatterplot(y="ASSIGNMENT BALANCE", x="MAPPING BALANCE",  hue = "Even_p_value", data = sp)#hue="size", size="size", data=tips)
+    #ax = sns.scatterplot(y="ASSIGNMENT BALANCE", x="MAPPING BALANCE",  hue = "Waste_value", data = sp)#hue="size", size="size", data=tips)
     h, l = ax.get_legend_handles_labels()
     plt.legend(h, labels, title="Avg MapQ", bbox_to_anchor=(0.92, 1), loc=2, borderaxespad=0., framealpha=1)
     plt.xlim([0,1])
     plt.ylim([0,1])
     
-    FN_FIG = FN_INPUT + '-var2read_dot.pdf'
+    FN_FIG = out_prefix + '.diff-assign2map_dot.pdf'
     plt.savefig(FN_FIG)
     
     #=========================== golden to read_distribute plot ============================
@@ -169,37 +134,37 @@ def plot_golden(FN_INPUT, df_use):
     plt.xlim([0,1])
     plt.ylim([0,1])
     
-    FN_FIG = FN_INPUT + '-gold2read_dot.pdf'
+    FN_FIG = out_prefix + '.diff-sim2map_dot.pdf'
     plt.savefig(FN_FIG)
     
     #=========================== golden to ref_bias plot ============================
     plt.clf()
-    ax = sns.scatterplot(x="SIMULATION BALANCE", y="ALLELIC BALANCE",  hue = "Avg_MapQ_code", data = sp, palette=sns.color_palette(color_mapQ))#hue="size", size="size", data=tips)
+    ax = sns.scatterplot(x="SIMULATION BALANCE", y="ASSIGNMENT BALANCE",  hue = "Avg_MapQ_code", data = sp, palette=sns.color_palette(color_mapQ))#hue="size", size="size", data=tips)
     h, l = ax.get_legend_handles_labels()
     plt.legend(h, labels, title="Avg MapQ", bbox_to_anchor=(0.92, 1), loc=2, borderaxespad=0., framealpha=1)
     plt.xlim([0,1])
     plt.ylim([0,1])
     
-    FN_FIG = FN_INPUT + '-gold2var_dot.pdf'
+    FN_FIG = out_prefix + '.diff-sim2assign_dot.pdf'
     plt.savefig(FN_FIG)
     
     #=========================== all merged plot ============================
     print("Ploting the Merged golden distribution Plot!")
     plt.clf()
-    sp['Normalized Allelic Balance']      = list(df_use['BALANCE']-df_use['SIM_BALANCE']) # the average map_q score
+    sp['Normalized Assignment Balance'] = list(df_use['BALANCE']-df_use['SIM_BALANCE']) # the average map_q score
     sp['Normalized Mapping Balance'] = list(df_use['MAP_BALANCE']-df_use['SIM_BALANCE']) # the average map_q score
-    #ax = sns.jointplot(x="Normalized Mapping Balance", y="Normalized Allelic Balance",  hue = "Avg_MapQ_code", data = sp, \
-    #        xlim=(-0.6,0.6), ylim=(-0.6,0.6), palette=sns.color_palette(color_mapQ))
-    ax = sns.jointplot(x="Normalized Mapping Balance", y="Normalized Allelic Balance",  hue = "Map_other", data = sp, \
-            xlim=(-0.8,0.8), ylim=(-0.8,0.8), palette=sns.color_palette(color_misMap))
+    ax = sns.jointplot(x="Normalized Mapping Balance", y="Normalized Assignment Balance",  hue = "Avg_MapQ_code", data = sp, \
+            xlim=(-0.8,0.8), ylim=(-0.8,0.8), palette=sns.color_palette(color_mapQ))
+    #ax = sns.jointplot(x="Normalized Mapping Balance", y="Normalized Assignment Balance",  hue = "Map_other", data = sp, \
+    #        xlim=(-0.8,0.8), ylim=(-0.8,0.8), palette=sns.color_palette(color_misMap))
     ax.ax_joint.axhline(y=0, color='gray', linestyle='dashdot', linewidth=0.2)
     ax.ax_joint.axvline(x=0, color='gray', linestyle='dashdot', linewidth=0.2)
     ax.ax_joint.get_legend().remove()
     h, l = ax.ax_joint.get_legend_handles_labels()
-    #plt.legend(h, labels, title="Avg MapQ", bbox_to_anchor=(0, 0), loc='lower right', borderaxespad=0.2)
-    plt.legend(h, n_labels, title="Mismapped Gain#", bbox_to_anchor=(1,0), loc='lower right', borderaxespad=0.2)
+    plt.legend(h, labels, title="Avg MapQ", bbox_to_anchor=(0, 0), loc='lower left', borderaxespad=0.2)
+    #plt.legend(h, n_labels, title="Mismapped Gain#", bbox_to_anchor=(1,0), loc='lower right', borderaxespad=0.2)
     
-    FN_FIG = FN_INPUT + '-merged_golden_dot.pdf'
+    FN_FIG = out_prefix + '.category.MapQ.pdf'
     plt.savefig(FN_FIG)
     
     #======================= allelic difference plot =========================
@@ -221,20 +186,20 @@ def plot_golden(FN_INPUT, df_use):
     #plt.legend(h, p_labels, title="Even P Value", bbox_to_anchor=(0,1), loc='upper right')
     plt.legend(h, labels, title="Avg MapQ", bbox_to_anchor=(1,1), loc='upper right')
     
-    FN_FIG = FN_INPUT + '-read_diff_allelic.pdf'
+    FN_FIG = out_prefix + '.diff2-assign2sim.pdf'
     plt.savefig(FN_FIG)
     
 
     plt.clf()
-    ax = sns.jointplot(x="Ref# - Simulation Ref#", y="Alt# - Simulation Alt#",  hue = "Map_other", data = sp, xlim=(-30,30), ylim=(-30,15), palette=sns.color_palette(color_misMap))
-    ax.ax_joint.axhline(y=0, color='gray', linestyle='dashdot', linewidth=0.1)
-    ax.ax_joint.axvline(x=0, color='gray', linestyle='dashdot', linewidth=0.1)
-    ax.ax_joint.get_legend().remove()
-    h, l = ax.ax_joint.get_legend_handles_labels()
-    plt.legend(h, n_labels, title="Mismapped Gain#", bbox_to_anchor=(1,1), loc='upper right')
-    
-    FN_FIG = FN_INPUT + '-read_diff_allelic.mismap.pdf'
-    plt.savefig(FN_FIG)
+    #ax = sns.jointplot(x="Ref# - Simulation Ref#", y="Alt# - Simulation Alt#",  hue = "Map_other", data = sp, xlim=(-30,30), ylim=(-30,15), palette=sns.color_palette(color_misMap))
+    #ax.ax_joint.axhline(y=0, color='gray', linestyle='dashdot', linewidth=0.1)
+    #ax.ax_joint.axvline(x=0, color='gray', linestyle='dashdot', linewidth=0.1)
+    #ax.ax_joint.get_legend().remove()
+    #h, l = ax.ax_joint.get_legend_handles_labels()
+    #plt.legend(h, n_labels, title="Mismapped Gain#", bbox_to_anchor=(1,1), loc='upper right')
+    #
+    #FN_FIG = out_prefix + '-read_diff_allelic.mismap.pdf'
+    #plt.savefig(FN_FIG)
     #====================== mapping difference plot =========================
     plt.clf()
     list_m_ref_diff = list(df_use['MAP_REF']-df_use['SIM_REF'])
@@ -254,20 +219,20 @@ def plot_golden(FN_INPUT, df_use):
     #plt.legend(h, p_labels, title="Even P Value", bbox_to_anchor=(0,1), loc='upper right')
     plt.legend(h, labels, title="Avg MapQ", bbox_to_anchor=(1,1), loc='upper right')
     
-    FN_FIG = FN_INPUT + '-read_diff_mapping.pdf'
+    FN_FIG = out_prefix + '.diff2-map2sim.pdf'
     plt.savefig(FN_FIG)
     
     
     plt.clf()
-    ax = sns.jointplot(x="Mapping Ref# - Simulation Ref#", y="Mapping Alt# - Simulation Alt#",  hue = "Map_other", data = sp, xlim=(-30,30), ylim=(-30,15), palette=sns.color_palette(color_misMap))
-    ax.ax_joint.axhline(y=0, color='gray', linestyle='dashdot', linewidth=0.1)
-    ax.ax_joint.axvline(x=0, color='gray', linestyle='dashdot', linewidth=0.1)
-    ax.ax_joint.get_legend().remove()
-    h, l = ax.ax_joint.get_legend_handles_labels()
-    plt.legend(h, n_labels, title="Mismapped Gain#", bbox_to_anchor=(1,1), loc='upper right')
-    
-    FN_FIG = FN_INPUT + '-read_diff_mapping.mismap.pdf'
-    plt.savefig(FN_FIG)
+    #ax = sns.jointplot(x="Mapping Ref# - Simulation Ref#", y="Mapping Alt# - Simulation Alt#",  hue = "Map_other", data = sp, xlim=(-30,30), ylim=(-30,15), palette=sns.color_palette(color_misMap))
+    #ax.ax_joint.axhline(y=0, color='gray', linestyle='dashdot', linewidth=0.1)
+    #ax.ax_joint.axvline(x=0, color='gray', linestyle='dashdot', linewidth=0.1)
+    #ax.ax_joint.get_legend().remove()
+    #h, l = ax.ax_joint.get_legend_handles_labels()
+    #plt.legend(h, n_labels, title="Mismapped Gain#", bbox_to_anchor=(1,1), loc='upper right')
+    #
+    #FN_FIG = out_prefix + '-read_diff_mapping.mismap.pdf'
+    #plt.savefig(FN_FIG)
     #======================== read loss-gain plot ===========================
     plt.clf()
     array_m_ref_diff = -np.array(df_use['MAP_REF']-df_use['SIM_REF'])
@@ -280,15 +245,15 @@ def plot_golden(FN_INPUT, df_use):
     sp["Loss of Read (Ref + Alt)"] = list_read_loss
     sp["Gain of Read"]             = list_read_gain
 
-    ax = sns.jointplot(x="Loss of Read (Ref + Alt)", y="Gain of Read", hue = "Avg_MapQ_code", data = sp, xlim=(0,30), ylim=(0,30), palette=sns.color_palette(color_mapQ))
-    ax.ax_joint.axhline(y=0, color='gray', linestyle='dashdot', linewidth=0.1)
-    ax.ax_joint.axvline(x=0, color='gray', linestyle='dashdot', linewidth=0.1)
-    ax.ax_joint.get_legend().remove()
-    h, l = ax.ax_joint.get_legend_handles_labels()
-    plt.legend(h, labels, title="Avg MapQ", bbox_to_anchor=(1,1), loc='upper right')
-    
-    FN_FIG = FN_INPUT + '-loss_gain.pdf'
-    plt.savefig(FN_FIG)
+    #ax = sns.jointplot(x="Loss of Read (Ref + Alt)", y="Gain of Read", hue = "Avg_MapQ_code", data = sp, xlim=(0,30), ylim=(0,30), palette=sns.color_palette(color_mapQ))
+    #ax.ax_joint.axhline(y=0, color='gray', linestyle='dashdot', linewidth=0.1)
+    #ax.ax_joint.axvline(x=0, color='gray', linestyle='dashdot', linewidth=0.1)
+    #ax.ax_joint.get_legend().remove()
+    #h, l = ax.ax_joint.get_legend_handles_labels()
+    #plt.legend(h, labels, title="Avg MapQ", bbox_to_anchor=(1,1), loc='upper right')
+    #
+    #FN_FIG = out_prefix + '-loss_gain.pdf'
+    #plt.savefig(FN_FIG)
 
     plt.close("all")
     sns.color_palette()
@@ -299,42 +264,18 @@ def plot_golden(FN_INPUT, df_use):
     hist_data['loss/gain in a variant'] = read_gain + ref_loss + alt_loss
     hist_data['category'] = ["MisMap gain"]*len(read_gain) + ["Ref loss"]*len(ref_loss) + ["Alt loss"]*len(alt_loss)
 
+    bin_num = max(hist_data['loss/gain in a variant']) - min(hist_data['loss/gain in a variant'])
     plt.clf()
-    ax = sns.displot(hist_data, x="loss/gain in a variant", bins=60, hue="category", log_scale=(False,True), element="step")
+    ax = sns.displot(hist_data, x="loss/gain in a variant", bins=bin_num, hue="category", log_scale=(False,True), element="step")
     ax.set(ylabel="occurence")
-    FN_FIG = FN_INPUT + '-loss_gain_occurence.pdf'
+    FN_FIG = out_prefix + '.loss_gain_occurence.pdf'
     plt.savefig(FN_FIG)
     
-    plt.clf()
-    ax = sns.displot(hist_data, x="loss/gain in a variant", bins=20, hue="category", log_scale=(False,True), multiple="dodge")
-    ax.set(ylabel="occurence")
-    FN_FIG = FN_INPUT + '-loss_gain_occurence.dodge.pdf'
-    plt.savefig(FN_FIG)
-
-    """
-    sns.histplot(list(df_use['SIM_REF']-df_use['MAP_REF']), log_scale=(False, True),  binwidth=1)
-    plt.show()
-    sns.histplot(list(df_use['SIM_ALT']-df_use['MAP_ALT']), log_scale=(False, True),  binwidth=1)
-    plt.show()
-    sns.histplot(df_use["MIS_MAP"], log_scale=(False, True),  binwidth=1)
-    plt.show()
-    """
-    #=========================== all merged plot ============================
-    """
-    plt.clf()
-    sp['Variant - Read Bias'] = list(df_use['BALANCE']-df_use['MAP_BALANCE']) # the average map_q score
-    sp['Read - Golden Bias']  = list(df_use['MAP_BALANCE']-df_use['SIM_BALANCE']) # the average map_q score
-    ax = sns.scatterplot(x="Read - Golden Bias", y="Variant - Read Bias",  hue = "Avg_MapQ_code", data = sp)#hue="size", size="size", data=tips)
-    #ax = sns.scatterplot(x="Read - Golden Bias", y="Variant - Read Bias",  hue = "Waste_value", data = sp)#hue="size", size="size", data=tips)
-    ax.axhline(y=0, color='gray', linestyle='dashdot', linewidth=0.2)
-    ax.axvline(x=0, color='gray', linestyle='dashdot', linewidth=0.2)
-    plt.legend(bbox_to_anchor=(1, 1), loc=2, borderaxespad=0.)
-    plt.xlim([-0.6,0.6])
-    plt.ylim([-0.6,0.6])
-    
-    FN_FIG = FN_INPUT + '-merged_read_dot.pdf'
-    plt.savefig(FN_FIG)
-    """
+    #plt.clf()
+    #ax = sns.displot(hist_data, x="loss/gain in a variant", bins=int(bin_num/3), hue="category", log_scale=(False,True), multiple="dodge")
+    #ax.set(ylabel="occurence")
+    #FN_FIG = out_prefix + '-loss_gain_occurence.dodge.pdf'
+    #plt.savefig(FN_FIG)
 
 
 
@@ -343,19 +284,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-mb', '--bias_report', help='bias report, must contain the golden information')
     parser.add_argument('-qt', '--quality_threshold', help='threshold that filtered the sites with avg_mapQ below the threshold', type=int, default=0)
+    parser.add_argument('-out', '--output_prefix', help='the prefix for the output plots and report')
     args = parser.parse_args()
     
     fn_bias = args.bias_report
     mapQ_th = args.quality_threshold
+    output_prefix = args.output_prefix
+    if output_prefix == None:
+        output_prefix = fn_bias
 
     df_use = pd.read_csv(fn_bias, sep='\t')
     df_use = df_use[df_use['AVG_MAPQ'] >= mapQ_th]
-    #df = pd.read_csv(FN_INPUT, sep='\t')
-    #df_mid = df[df['ALT'] + df['REF']> 0]
-    #df_use = df_use[df_use['NUM_READS'] >= 10]
-    ####df_use = df_use[df_use['HET_SITE'].isin(dict_exclude['chr21'])]
-    #df_use.loc[:,'THRESHOLD'] = 15
     df_use.head()
 
-    plot_golden(fn_bias, df_use)
+    plot_golden(output_prefix, df_use)
 

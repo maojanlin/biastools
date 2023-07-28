@@ -59,7 +59,7 @@ def map_num_to_size(num):
         return 0
     elif num <= 3:
         return 1
-    elif num <= 6:
+    elif num <= 5:
         return 2
     elif num <= 10:
         return 3
@@ -79,7 +79,7 @@ def dist_origin(a, b):
 
 
 
-def plot_golden(FN_INPUT, df_use):
+def plot_golden(out_prefix, df_use):
     # Add columns
     mapQ   = list(df_use['AVG_MAPQ'])
     pValue = list(df_use['EVEN_P_VALUE'])
@@ -111,56 +111,62 @@ def plot_golden(FN_INPUT, df_use):
     
     #=========================== all merged plot ============================
     print("Ploting the Merged golden distribution Plot!")
-    sp['Normalized Allelic Balance'] = list(df_use['BALANCE']-df_use['SIM_BALANCE']) # the average map_q score
+    sp['Normalized Assignment Balance'] = list(df_use['BALANCE']-df_use['SIM_BALANCE']) # the average map_q score
     sp['Normalized Mapping Balance'] = list(df_use['MAP_BALANCE']-df_use['SIM_BALANCE']) # the average map_q score
-    #ax = sns.jointplot(x="Normalized Mapping Balance", y="Normalized Allelic Balance",  hue = "Avg_MapQ_code", data = sp, \
+    #ax = sns.jointplot(x="Normalized Mapping Balance", y="Normalized Assignment Balance",  hue = "Avg_MapQ_code", data = sp, \
     #        xlim=(-0.6,0.6), ylim=(-0.6,0.6), palette=sns.color_palette(color_mapQ))
-    ax = sns.jointplot(x="Normalized Mapping Balance", y="Normalized Allelic Balance",  hue = "Map_other", data = sp, \
+    ax = sns.jointplot(x="Normalized Mapping Balance", y="Normalized Assignment Balance",  hue = "Map_other", data = sp, \
             xlim=(-0.8,0.8), ylim=(-0.8,0.8), palette=sns.color_palette(color_misMap))
     ax.ax_joint.axhline(y=0, color='gray', linestyle='dashdot', linewidth=0.2)
     ax.ax_joint.axvline(x=0, color='gray', linestyle='dashdot', linewidth=0.2)
     ax.ax_joint.get_legend().remove()
     h, l = ax.ax_joint.get_legend_handles_labels()
     #plt.legend(h, labels, title="Avg MapQ", bbox_to_anchor=(0, 0), loc='lower right', borderaxespad=0.2)
-    plt.legend(h, n_labels, title="Mismapped Gain#", bbox_to_anchor=(1, 0), loc='lower right', borderaxespad=0.2)
-    plt.show()
+    plt.legend(h, n_labels, title="Mismapped Gain#", bbox_to_anchor=(0, 0), loc='lower right', borderaxespad=0.2)
+    #plt.savefig(out_prefix + '.mismap.pdf')
 
-    #print(df_use[sp['Normalized Allelic Balance']**2 + sp['Normalized Mapping Balance']**2 > 0.01])
-    biased = (sp['Normalized Allelic Balance']**2 + sp['Normalized Mapping Balance']**2 > 0.01)
-    b_loss = ((sp['Normalized Allelic Balance'] < sp['Normalized Mapping Balance']*2 + 0.1)*(sp['Normalized Allelic Balance']*2 + 0.1 > sp['Normalized Mapping Balance']))
-    b_flux = (sp['Normalized Allelic Balance'] > 0.1)*(sp['Map_other'] > 4)
-    b_artifact = (sp['Normalized Allelic Balance'] > 0.1)*(sp['Map_other'] <= 4)
+    #print(df_use[sp['Normalized Assignment Balance']**2 + sp['Normalized Mapping Balance']**2 > 0.01])
+    biased = (sp['Normalized Assignment Balance']**2 + sp['Normalized Mapping Balance']**2 > 0.01)
+    b_loss = ((sp['Normalized Assignment Balance'] < sp['Normalized Mapping Balance']*2 + 0.1)*(sp['Normalized Assignment Balance']*2 + \
+              0.1 > sp['Normalized Mapping Balance'])) + \
+             ((sp['Normalized Assignment Balance'] + 0.1 > sp['Normalized Mapping Balance']*2)*(sp['Normalized Assignment Balance']*2 \
+              < sp['Normalized Mapping Balance'] + 0.1))
+    b_flux = (sp['Normalized Assignment Balance'] > 0.1)*(sp['Map_other'] >= 3) + \
+             (sp['Normalized Assignment Balance'] < -0.1)*(sp['Map_other'] >= 3)
+    b_artifact = (sp['Normalized Assignment Balance'] > 0.1)*(sp['Map_other'] < 3) + \
+                 (sp['Normalized Assignment Balance'] < -0.1)*(sp['Map_other'] < 3)
 
     sp['Category'] = biased*4
     sp['Category'] -= (biased * b_loss)*3
     sp['Category'] -= (biased * ~b_loss * b_flux)*2
     sp['Category'] -= (biased * ~b_loss * b_artifact)*1
-    labels = ['Accurate', 'Bias (Loss)', 'Bias (Flux)', 'Bias (Local)', 'Outliers']
+    labels = ['Balanced', 'Bias (Loss)', 'Bias (Flux)', 'Bias (Local)', 'Outliers']
 
-    ax = sns.jointplot(x="Normalized Mapping Balance", y="Normalized Allelic Balance",  hue = "Category", data = sp, \
+    ax = sns.jointplot(x="Normalized Mapping Balance", y="Normalized Assignment Balance",  hue = "Category", data = sp, \
             xlim=(-0.8,0.8), ylim=(-0.8,0.8), palette='Set2')
     ax.ax_joint.axhline(y=0, color='gray', linestyle='dashdot', linewidth=0.2)
     ax.ax_joint.axvline(x=0, color='gray', linestyle='dashdot', linewidth=0.2)
     ax.ax_joint.get_legend().remove()
     h, l = ax.ax_joint.get_legend_handles_labels()
-    #plt.legend(h, labels, title="Avg MapQ", bbox_to_anchor=(0, 0), loc='lower right', borderaxespad=0.2)
-    plt.legend(h, labels, title="Category#", bbox_to_anchor=(1, 0), loc='lower right', borderaxespad=0.2)
-    plt.show()
-    
-    ax = sns.jointplot(x="Normalized Mapping Balance", y="Normalized Allelic Balance",  hue = "Category", data = sp, \
-            xlim=(-0.8,0.8), ylim=(-0.8,0.8), palette='Set2')
-    ax.ax_joint.axhline(y=0, color='gray', linestyle='dashdot', linewidth=0.2)
-    ax.ax_joint.axvline(x=0, color='gray', linestyle='dashdot', linewidth=0.2)
-    ax.ax_joint.get_legend().remove()
-    h, l = ax.ax_joint.get_legend_handles_labels()
-    plt.legend(h, labels, title="Category#", bbox_to_anchor=(1, 0), loc='lower right', borderaxespad=0.2)
-    plt.savefig(FN_INPUT + '_category.pdf')
+    plt.legend(h, labels, title="Category#", bbox_to_anchor=(0, 0), loc='lower left', borderaxespad=0.2)
+    plt.savefig(out_prefix + '.category.pdf')
 
-    df_use[sp['Category'] == 4].to_csv(FN_INPUT + '_outlier.tsv', index=False, sep="\t")
-    df_use[sp['Category'] == 1].to_csv(FN_INPUT + '_bias_loss.tsv', index=False, sep="\t")
-    df_use[sp['Category'] == 2].to_csv(FN_INPUT + '_bias_flux.tsv', index=False, sep="\t")
-    df_use[sp['Category'] == 3].to_csv(FN_INPUT + '_bias_local.tsv', index=False, sep="\t")
-    df_use[sp['Map_other'] > 4].to_csv(FN_INPUT + '_bias_mismap_gain.tsv', index=False, sep="\t")
+    print("-------------------------------------------")
+    print("Number of balanced:", sum(sp['Category'] == 0))
+    print("Number of bias_loss:", sum(sp['Category'] == 1))
+    print("Number of bias_flux:", sum(sp['Category'] == 2))
+    print("Number of bias_local:", sum(sp['Category'] == 3))
+    print("Number of outliers:", sum(sp['Category'] == 4))
+    print("-------------------------------------------")
+
+    df_use.loc[((sp['Category'] == 1)*(sp['Normalized Assignment Balance'] > 0)).values, :].to_csv(out_prefix + '.bias-loss.1.tsv', index=False, sep="\t")
+    df_use.loc[((sp['Category'] == 1)*(sp['Normalized Assignment Balance'] < 0)).values, :].to_csv(out_prefix + '.bias-loss.2.tsv', index=False, sep="\t")
+    df_use.loc[((sp['Category'] == 2)*(sp['Normalized Assignment Balance'] > 0)).values, :].to_csv(out_prefix + '.bias-flux.1.tsv', index=False, sep="\t")
+    df_use.loc[((sp['Category'] == 2)*(sp['Normalized Assignment Balance'] < 0)).values, :].to_csv(out_prefix + '.bias-flux.2.tsv', index=False, sep="\t")
+    df_use.loc[((sp['Category'] == 3)*(sp['Normalized Assignment Balance'] > 0)).values, :].to_csv(out_prefix + '.bias-local.1.tsv', index=False, sep="\t")
+    df_use.loc[((sp['Category'] == 3)*(sp['Normalized Assignment Balance'] < 0)).values, :].to_csv(out_prefix + '.bias-local.2.tsv', index=False, sep="\t")
+    df_use.loc[(sp['Category'] == 4).values, :].to_csv(out_prefix + '.bias-outlier.tsv', index=False, sep="\t")
+    df_use.loc[(sp['Map_other'] > 4).values, :].to_csv(out_prefix + '.bias-mismap_gain.tsv', index=False, sep="\t")
 
 
 
@@ -169,19 +175,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-mb', '--bias_report', help='bias report, must contain the golden information')
     parser.add_argument('-qt', '--quality_threshold', help='threshold that filtered the sites with avg_mapQ below the threshold', type=int, default=0)
+    parser.add_argument('-out', '--output_prefix', help='the prefix for the output plots and report')
     args = parser.parse_args()
     
     fn_bias = args.bias_report
     mapQ_th = args.quality_threshold
+    output_prefix = args.output_prefix
+    if output_prefix == None:
+        output_prefix = fn_bias
 
     df_use = pd.read_csv(fn_bias, sep='\t')
     df_use = df_use[df_use['AVG_MAPQ'] >= mapQ_th]
-    #df = pd.read_csv(FN_INPUT, sep='\t')
-    #df_mid = df[df['ALT'] + df['REF']> 0]
-    #df_use = df_use[df_use['NUM_READS'] >= 10]
-    ####df_use = df_use[df_use['HET_SITE'].isin(dict_exclude['chr21'])]
-    #df_use.loc[:,'THRESHOLD'] = 15
     df_use.head()
 
-    plot_golden(fn_bias, df_use)
+    plot_golden(output_prefix, df_use)
 
