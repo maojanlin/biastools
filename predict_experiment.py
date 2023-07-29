@@ -131,6 +131,12 @@ if __name__ == '__main__':
     # filter out the sites suspicious of imcomplete vcf information
     miss_info = (df_real['OTHER'] > df_real['NUM_READS'] * 0.9) + (df_real['OTHER'] > df_real['NUM_READS'] * 0.4) * \
                 ( (df_real['REF'] == 0) + (df_real['ALT'] == 0 ))
+    no_info = df_simulation['AVG_MAPQ'].isnull()
+    no_info += df_simulation['MAP_BALANCE'].isnull()
+    no_info += df_simulation['BALANCE'].isnull()
+    miss_info += no_info
+    df_simulation = df_simulation[~no_info]
+    sp_label      = sp_label[~no_info]
     print("filtered number:", sum(miss_info))
 
     df_real_test  = df_real[~miss_info]

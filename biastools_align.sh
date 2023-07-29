@@ -14,6 +14,7 @@ if [[ ${ALN_IDX} == 'none' ]]; then
 fi
 
 if [[ ${ALN} == "bowtie2" ]]; then
+    echo "[Biastools] Align with bowtie2"
     if [ ! -f ${ALN_IDX}.1.bt2 ]; then
         bowtie2-build ${path_ref} ${ALN_IDX}
     fi
@@ -23,12 +24,13 @@ if [[ ${ALN} == "bowtie2" ]]; then
         samtools sort -o ${prefix}.hapB.${run_id}.sorted.bam 
     samtools merge -f ${prefix}.${run_id}.sorted.bam ${prefix}.hapA.${run_id}.sorted.bam ${prefix}.hapB.${run_id}.sorted.bam
 elif [[ ${ALN} == "bwamem" ]]; then
+    echo "[Biastools] Align with BWA MEM"
     if [ ! -f ${ALN_IDX}.bwt ]; then
         bwa index ${path_ref} -p ${ALN_IDX}
     fi
-    bwa mem -t ${THR} ${ALN_IDX} ${run_id}_hapA_1.fq.gz ${run_id}_hapA_2.fq.gz -R "@RG\tID:${run_id}_hapA\tSM:${sample_id}" |\
+    bwa mem -t ${THR} ${ALN_IDX} ${prefix}.hapA_1.fq.gz ${prefix}.hapA_2.fq.gz -R "@RG\tID:${run_id}_hapA\tSM:${sample_id}" |\
         samtools sort -@ ${THR} -o ${prefix}.hapA.${run_id}.sorted.bam -
-    bwa mem -t ${THR} ${ALN_IDX} ${run_id}_hapB_1.fq.gz ${run_id}_hapB_2.fq.gz -R "@RG\tID:${run_id}_hapB\tSM:${sample_id}" |\
+    bwa mem -t ${THR} ${ALN_IDX} ${prefix}.hapB_1.fq.gz ${prefix}.hapB_2.fq.gz -R "@RG\tID:${run_id}_hapB\tSM:${sample_id}" |\
         samtools sort -@ ${THR} -o ${prefix}.hapB.${run_id}.sorted.bam -
     samtools merge -f ${prefix}.${run_id}.sorted.bam ${prefix}.hapA.${run_id}.sorted.bam ${prefix}.hapB.${run_id}.sorted.bam
 fi
