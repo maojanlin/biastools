@@ -4,7 +4,7 @@
 ############################################################
 Help() {
    # Display Help
-   echo "Simulation module of the Biastools."
+   echo "Simulation/Alignment/Analyzing/Prediction module of the Biastools."
    echo
    echo "Syntax: Biastools.sh [-h] [options]  -1/2/3/4 -o <work_dir> -g <ref.fa> -v <vcf> -s 'sample_name' -r 'run0'"
    echo " Inputs:"
