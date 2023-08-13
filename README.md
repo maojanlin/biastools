@@ -5,7 +5,7 @@ _Updated: Aug 12, 2023_
 
 ### Simulation, plotting, and analysis
 ```
-$ Biastools.sh -123 -o <work_dir> -g <ref.fa> -v <vcf> -s 'sample_name' -r 'run_id'
+$ Biastools.sh --simulate --align --analyze_sim -o <work_dir> -g <ref.fa> -v <vcf> -s <sample_name> -r <run_id>
 ```
 
 With the example command, biastools will 
@@ -16,7 +16,7 @@ With the example command, biastools will
 #### Other aligners
 Biastools support the alignment with `Bowtie 2` and `BWA MEM`. Additional alignment method can be performed on the simulated reads and feed in the analysis with command
 ```
-$ Biastools.sh -3 -o <work_dir> -g <ref.fa> -v <vcf> -s 'sample_name' -r 'run_id'
+$ Biastools.sh -3 -o <work_dir> -g <ref.fa> -v <vcf> -s <sample_name> -r <run_id>
 ```
 
 Noted that the alignment file should be named with <work_dir/sample_name.run_id.sorted.bam> and tag with haplotype information.
