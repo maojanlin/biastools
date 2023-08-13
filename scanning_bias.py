@@ -130,8 +130,10 @@ def scanning_bias(
         if num_var > 1:
             nonDip_flag = False
             if num_var > 2 or list_alt_depth[1]*2 < list_alt_depth[0]:
-                nonDip_flag = True                                                                                           # -> for debug purpose
-            dict_ref_info[ref_name][start_pos]['var'].append([var.start, total_depth, list_alt_depth[:num_var], nonDip_flag, alt_depth, list_alleles])
+                nonDip_flag = True                                                                                           
+            dict_ref_info[ref_name][start_pos]['var'].append([var.start, total_depth, list_alt_depth[:num_var], nonDip_flag, \
+                                                              alt_depth, list_alleles])
+                                                              # -> for debug purpose
     return dict_ref_info
 
 
@@ -234,6 +236,7 @@ def link_bias_region_and_report(
         if score > threshold_1:
             if idx > pos_stop + link_dist:
                 list_region.append((pos_start, pos_stop+1))
+                #print(idx, pos_start, pos_stop+1)
                 pos_start = idx
                 pos_stop  = idx
             else:
@@ -254,12 +257,13 @@ def link_bias_region_and_report(
             list_suspicious.append((pos_start + region_begin, pos_stop + region_begin, max_score, avg_score))
     if f_ob:
         for segment in list_bias:
-            f_ob.write(ref_name + ' ' + str(segment[0]) + ' ' + str(segment[1]) + ' len:' + str(segment[1]-segment[0]) + ',max:' + str(round(segment[2],2)) + ',avg:' + str(round(segment[3],2)) + '\n')
+            f_ob.write(ref_name + '\t' + str(segment[0]) + '\t' + str(segment[1]) + '\tlen:' + str(segment[1]-segment[0]) + ',max:' + str(round(segment[2],2)) + ',avg:' + str(round(segment[3],2)) + '\n')
     if f_os:
         for segment in list_suspicious:
-            f_os.write(ref_name + ' ' + str(segment[0]) + ' ' + str(segment[1]) + ' len:' + str(segment[1]-segment[0]) + ',max:' + str(round(segment[2],2)) + ',avg:' + str(round(segment[3],2)) + '\n')
+            f_os.write(ref_name + '\t' + str(segment[0]) + '\t' + str(segment[1]) + '\tlen:' + str(segment[1]-segment[0]) + ',max:' + str(round(segment[2],2)) + ',avg:' + str(round(segment[3],2)) + '\n')
     for segment in sorted(list_bias, key=lambda ele: (ele[1]-ele[0])*ele[2]*ele[3], reverse=True)[:5]:
         print(ref_name + ' ' + str(segment[0]) + ' ' + str(segment[1]) + ' len:' + str(segment[1]-segment[0]) + ',max:' + str(round(segment[2],2)) + ',avg:' + str(round(segment[3],2)))
+        pass
     return list_bias, list_suspicious
 
 
@@ -275,12 +279,17 @@ def calculate_3D_score(
 
     f_ob = open(fn_out_report + '.bias.bed', 'w')
     f_os = open(fn_out_report + '.suspicious.bed', 'w')
-    f_ob.write('#chrom chromStart chromEnd\n')
-    f_os.write('#chrom chromStart chromEnd\n')
+    f_ob.write('#chrom\tchromStart\tchromEnd\tname\n')
+    f_os.write('#chrom\tchromStart\tchromEnd\tname\n')
+
+    link_dist = 1000
     for ref_name, dict_region_begin in dict_3D_measures.items():
-        for region_begin, array_info in dict_region_begin.items():
+        old_region_begin = -link_dist
+        old_array = np.array([])
+        for region_begin, array_info in sorted(dict_region_begin.items()):
             array_read_depth, array_var_density, array_dip_density = array_info
-            
+            #print(region_begin, region_begin+len(array_info[0]))
+
             #array_score_product = np.round(array_read_depth/avg_RD) * (array_var_density/avg_VD+0.1) * (array_dip_density/avg_ND+0.1)
             #array_score_product = np.where(array_score_product > 30, 30, array_score_product)
             """
@@ -294,6 +303,7 @@ def calculate_3D_score(
             array_Z_score_ND = (array_dip_density-avg_ND)/std_ND
             array_Z_score_ND = np.where(array_Z_score_ND > 0, array_Z_score_ND, 0)
             array_score_sum  = array_Z_score_RD + array_Z_score_VD + array_Z_score_ND
+            array_score_product  = array_Z_score_RD * (array_Z_score_VD + array_Z_score_ND)
             #array_score_sum = (array_read_depth-avg_RD)/std_RD
             #array_score_sum = (array_var_density-avg_VD)/std_VD
             #array_score_sum = (array_dip_density-avg_ND)/std_ND
@@ -303,10 +313,64 @@ def calculate_3D_score(
             #array_score_sum = np.where(array_score_sum > 0, array_score_sum, 0)
             #array_score_sum = np.where(array_score_sum > 30, 30, array_score_sum)
             #link_bias_region_and_report(array_score_sum, region_begin, ref_name, f_ob, f_os)
-            link_bias_region_and_report(array_score_sum, region_begin, ref_name, f_ob, f_os,3,5,1000)
+            #link_bias_region_and_report(array_score_product, region_begin, ref_name, f_ob, f_os,20,30,1000)
+            #link_bias_region_and_report(array_score_sum, region_begin, ref_name, f_ob, f_os,3,5,link_dist)
+            #print(old_region_begin, old_region_begin+len(old_array), region_begin)
             dict_3D_measures[ref_name][region_begin].append(array_score_sum)
+            if old_region_begin + len(old_array) + link_dist > region_begin:
+                assert(old_region_begin + len(old_array) < region_begin)
+                # Connect
+                diff = region_begin - old_region_begin - len(old_array)
+                old_array = np.concatenate((old_array, np.zeros(diff), array_score_sum))
+            else:
+                if old_region_begin != -1000:
+                    link_bias_region_and_report(old_array, old_region_begin, ref_name, f_ob, f_os,3,5,link_dist)
+                #dict_3D_measures[ref_name][old_region_begin].append(old_array)
+                old_region_begin = region_begin
+                old_array        = array_score_sum
+        link_bias_region_and_report(old_array, old_region_begin, ref_name, f_ob, f_os,3,5,link_dist)
     f_ob.close()
     f_os.close()
+    
+    # report the region with low Read depth
+    f_or = open(fn_out_report + '.lowRd.bed', 'w')
+    f_or.write('#chrom\tchromStart\tchromEnd\tname\n')
+    rd_thresh = min(int(avg_RD/5),10)
+    for ref_name, dict_region_begin in dict_3D_measures.items():
+        global_start = []
+        global_stop  = []
+        for region_begin, array_info in sorted(dict_region_begin.items()):
+            array_read_depth, *_ = array_info
+
+            bool_low = array_read_depth < rd_thresh
+            #print(bool_low)
+            bool_low_shift = np.concatenate(([False], bool_low))[:-1]
+            bool_start = bool_low > bool_low_shift
+            bool_stop  = bool_low < bool_low_shift
+            
+            list_start = [idx+region_begin for idx, x in enumerate(bool_start) if x]
+            list_stop  = [idx+region_begin for idx, x in enumerate(bool_stop ) if x]
+            
+            if len(list_start) == len(list_stop):
+                list_start.append(region_begin + len(array_read_depth))
+            if global_start == []:
+                global_start = list_start
+                global_stop  = list_stop
+            else:
+                if list_start[0] == region_begin:
+                    global_start += list_start[1:]
+                    global_stop  += list_stop
+                else:
+                    global_stop += [region_begin-1]
+                    global_start += list_start
+                    global_stop  += list_stop
+        global_start = global_start[:-1]
+        assert(len(global_start) == len(global_stop))
+        for idx in range(len(global_start)):
+            st = global_start[idx]
+            ed = global_stop[idx]
+            f_or.write(ref_name + '\t' + str(st) + '\t' + str(ed) + '\tlen:' + str(ed-st) + '\n')
+    f_or.close()
 
 
 def get_baseline(
@@ -351,6 +415,7 @@ if __name__ == "__main__":
     parser.add_argument('-w', '--window_size', help='window size for average depth, density analysis', type=int, default=400)
     parser.add_argument('-rd', '--read_depth', help='the average sequence read depth')
     parser.add_argument('-b', '--baseline', help='the baseline report generate by sample_baseline.py')
+    parser.add_argument('-s', '--sample', action='store_true', help='sample for the baseline')
     parser.add_argument('-o',  '--out_report', help='scanning bed file and reports')
     parser.add_argument('-wig', '--out_wig', help='flag for wig output', action='store_true')
     args = parser.parse_args()
@@ -359,14 +424,15 @@ if __name__ == "__main__":
     rd_thresh     = args.read_depth
     window_size   = args.window_size
     fn_baseline   = args.baseline
+    flag_sample   = args.sample
     fn_out_report = args.out_report
     flag_wig      = args.out_wig
 
     f_gvcf = pysam.VariantFile(fn_gvcf)
     # load or calculate the 3D measures depending on pickle file existance
-    if os.path.exists(fn_out_report + '.pickle'):
-        print("Pickle file", fn_out_report + '.pickle', 'exist, load it instead of recalculate...')
-        f_i = open(fn_out_report + '.pickle', 'rb')
+    if os.path.exists(fn_gvcf + '.pickle'):
+        print("Pickle file", fn_gvcf + '.pickle', 'exist, load it instead of recalculate...')
+        f_i = open(fn_gvcf + '.pickle', 'rb')
         dict_3D_measures = pickle.load(f_i)
         f_i.close()
     else:
@@ -376,8 +442,8 @@ if __name__ == "__main__":
             dict_ref_info=dict_ref_info,
             window_size=window_size
             )
-        print("Store the measures information as", fn_out_report + '.pickle...')
-        f_o = open(fn_out_report + '.pickle', 'wb')
+        print("Store the measures information as", fn_gvcf + '.pickle...')
+        f_o = open(fn_gvcf + '.pickle', 'wb')
         pickle.dump(dict_3D_measures, f_o)
         f_o.close()
     
@@ -385,10 +451,13 @@ if __name__ == "__main__":
     if fn_baseline:
         # avg_RD, std_RD, avg_VD, std_VD, avg_ND, std_ND
         list_statistics = get_baseline(fn_baseline)
-    else:
+    elif flag_sample:
         list_statistics = calculate_avg(dict_3D_measures)
+    else:
+        list_statistics = [30, 10, 0.7, 1.6, 0.3, 1.2]
     if rd_thresh:
         list_statistics[0] = rd_thresh
+    
 
     print("Calculate 3D scoring and output bed...")
     calculate_3D_score(dict_3D_measures, fn_out_report, list_statistics)
