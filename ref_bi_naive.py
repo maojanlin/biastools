@@ -5,56 +5,8 @@ import os.path
 from os import path
 import pysam
 import numpy as np
-from scipy.stats import chisquare
-from ref_bi_adaptive_wgs import output_report, get_division
+from ref_bi_context import output_report, get_division
 
-
-def chi_square_test(
-        var_start:      int,
-        list_pos_start: list
-        ) -> float:
-    """
-    transform the list pos_start into distribution
-    """
-    #list_pos_start, list_pos_end = list_start_end
-    if len(list_pos_start) < 2:
-        return 0 # None, cannot test
-    #print(var_start, list_pos_start)
-    bucket_num = 5
-    bucket_len = int(100/ bucket_num)
-    list_count = np.zeros(bucket_num)
-    for ele in list_pos_start:
-        input_idx = int((var_start - ele)/bucket_len)
-        if input_idx >= bucket_num:
-            #print("skip")
-            continue
-        list_count[input_idx] += 1
-    #print(list_count)
-    return chisquare(list_count)[1]
-    
-
-def interval_variance(
-        var_start:      int,
-        list_start_end: list
-        ) -> float:
-    list_pos_start, list_pos_end = list_start_end
-    if len(list_pos_start) < 2:
-        return None
-    print(var_start)
-    print(list_pos_start)
-    list_interval = []
-    old_pos = 0 #list_pos_start[0]
-    for pos in list_pos_start:
-        list_interval.append(pos - old_pos)
-        old_pos = pos
-    list_interval = list_interval[1:]
-    mean_interval  = sum(list_interval)/len(list_interval)
-    print(list_interval)
-    var = 0
-    for interval in list_interval:
-        var += (interval - mean_interval)*(interval - mean_interval)
-    var = var/len(list_interval)
-    return var
 
 
 def hap_inside(

@@ -1,9 +1,5 @@
 import argparse
-import re
-from indelpost import Variant, VariantAlignment
 import pickle
-import os.path
-from os import path
 import pysam
 import numpy as np
 
