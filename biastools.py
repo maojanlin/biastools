@@ -2,6 +2,21 @@
 import subprocess
 import sys
 import argparse
+from shutil import which
+
+def is_tool(name):
+    """Check whether `name` is on PATH and marked as executable."""
+    return which(name) is not None
+
+
+def check_program_install(list_names):
+    flag_violate = False
+    for name in list_names:
+        if is_tool(name) == False:
+            print(name, "is a prerequisite program, please install it before running biastools")
+            flag_violate = True
+    if flag_violate:
+        exit()
 
 
 def bool2str(flag):
@@ -9,6 +24,7 @@ def bool2str(flag):
         return "1"
     else:
         return "0"
+
 
 
 
@@ -23,9 +39,10 @@ if __name__ == "__main__":
     parser.add_argument('--simulate', help='[1] Option to run biastools simulation.', action='store_true')
     parser.add_argument('--align',    help='[2] Option to run biastools align.', action='store_true')
     parser.add_argument('--analyze',  help='[3] Option to run biastools analyze.', action='store_true')
-    parser.add_argument('--predict',  help='[4] Option to predict bias from analysis report', action='store_true')
+    parser.add_argument('--predict',  help='[4] Option to predict bias from analysis report.', action='store_true')
 
     parser.add_argument('-t', '--thread', help="Number of threads to use [max].", type=int)
+    parser.add_argument('--force', help="running the program without checking prerequisite programs.", action='store_true')
     # [1]
     parser.add_argument('-x', '--coverage', help="Read coverage to simulate [30].", type=int, default=30)
     # [2]
@@ -52,8 +69,10 @@ if __name__ == "__main__":
     flag_align    = args.align
     flag_analyze  = args.analyze
     flag_predict  = args.predict
+    
     assert flag_simulate + flag_align + flag_analyze + flag_predict >= 1, "at least one of the --simulate/align/analyze/predict option should be specified."
 
+    flag_force = args.force
     thread = args.thread
     if thread == None:
         result = subprocess.run(["nproc"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True)
@@ -77,10 +96,18 @@ if __name__ == "__main__":
     if flag_predict: 
         assert real_report != None, "--real_report should be specified when using --predict"
     
-        
+    # Checking prerequisite programs are installed
+    if flag_force != True:
+        check_program_install(["bedtools", \
+                               "samtools", \
+                               "bcftools", \
+                               "bwa", \
+                               "bowtie2", \
+                               "gzip", \
+                               "tabix", \
+                               "mason_simulator"])
 
-    #TODO TEST ALL the TOOLS
-
+    # Start running
     command = "mkdir -p " + path_output
     subprocess.call(command, shell=True)
 

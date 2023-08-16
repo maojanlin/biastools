@@ -3,6 +3,7 @@ import subprocess
 import sys
 import os
 import argparse
+from biastools import check_program_install
 
 
 if __name__ == "__main__":
@@ -18,6 +19,7 @@ if __name__ == "__main__":
     parser.add_argument('--compare_rpt', help='[3] Option to directly compare two bias report.', action='store_true')
 
     parser.add_argument('-t', '--thread', help="Number of threads to use [max].", type=int)
+    parser.add_argument('--force', help="running the program without checking prerequisite programs.", action='store_true')
     # [1]
     parser.add_argument('-w', '--wig', help="Generate the wig files for the three measures, VERY SLOW [False]", action='store_true')
     parser.add_argument('-R', '--range', help="The range in the bam file targeted for analysis.")
@@ -42,6 +44,7 @@ if __name__ == "__main__":
     flag_compare_rpt = args.compare_rpt
     assert flag_scan + flag_compare_bam + flag_compare_rpt >= 1, "at least one of the --scan/compare_bam/compare_rpt option should be specified."
 
+    flag_force = args.force
     thread = args.thread
     if thread == None:
         result = subprocess.run(["nproc"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True)
@@ -56,8 +59,13 @@ if __name__ == "__main__":
     lowRd_file2 = args.lowRd2
 
     
-    #TODO TEST ALL the TOOLS
+    # Checking prerequisite programs are installed
+    if flag_force != True:
+        check_program_install(["bedtools", \
+                               "samtools", \
+                               "bcftools"])
 
+    # Start running
     command = "mkdir -p " + path_output
     subprocess.call(command, shell=True)
     prefix = path_output + '/' + sample_id 
