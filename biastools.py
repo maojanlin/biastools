@@ -1,4 +1,4 @@
-# Wrap up python file for the biastools
+# Wrap up python file for the biastools 1st and 2nd module
 import subprocess
 import sys
 import argparse
@@ -15,7 +15,7 @@ def bool2str(flag):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-o', '--out', help="Path to output directory ['out_dir'].", default="out_dir")
-    parser.add_argument('-g', '--genome', help="Path to output reference genome.")
+    parser.add_argument('-g', '--genome', help="Path to the reference genome.")
     parser.add_argument('-v', '--vcf', help="Path to the personal vcf file.")
     parser.add_argument('-s', '--sample_id', help="Sample ID ['sample'].", default="sample")
     parser.add_argument('-r', '--run_id', help="Run ID ['run'].", default="run")
@@ -52,7 +52,7 @@ if __name__ == "__main__":
     flag_align    = args.align
     flag_analyze  = args.analyze
     flag_predict  = args.predict
-    assert flag_simulate + flag_align + flag_analyze + flag_predict >= 1, "at least of of the --simulate/align/analyze/predict option should be specified."
+    assert flag_simulate + flag_align + flag_analyze + flag_predict >= 1, "at least one of the --simulate/align/analyze/predict option should be specified."
 
     thread = args.thread
     if thread == None:
