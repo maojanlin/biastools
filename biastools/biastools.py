@@ -154,7 +154,7 @@ if __name__ == "__main__":
         assert path_vcf != None, "--vcf should be specified when using --simulate"
         print("[Biastools] Simulate...")
         command = ' '.join(["bash biastools_simulation.sh", path_ref, path_vcf, path_output, sample_id, str(thread), str(coverage)])
-        print(command)
+        #print(command)
         subprocess.call(command, shell=True)
     if flag_align:
         assert path_ref != None, "--genome should be specified when using --align"
@@ -163,7 +163,7 @@ if __name__ == "__main__":
             align_index = path_ref
         print("[Biastools] Align...")
         command = ' '.join(["bash biastools_align.sh", path_ref, path_vcf, path_output, sample_id, str(thread), aligner, align_index, run_id])
-        print(command)
+        #print(command)
         subprocess.call(command, shell=True)
     if flag_analyze:
         if list_report != None:
@@ -182,12 +182,12 @@ if __name__ == "__main__":
             print("[Biastools] Analyze and plot...")
             command = ' '.join(["bash biastools_analysis.sh", path_ref, path_vcf, path_output, sample_id, str(thread), run_id, bool2str(flag_real), \
                                 bool2str(flag_naive), str(boundary)])
-            print(command)
+            #print(command)
             subprocess.call(command, shell=True)
     if flag_predict:
         print("[Biastools] Predict bias...")
         command = ' '.join(["bash biastools_predict.sh", path_output, sample_id, run_id, bool2str(flag_real), real_report, sim_report])
-        print(command)
+        #print(command)
         subprocess.call(command, shell=True)
 
 
@@ -204,7 +204,7 @@ if __name__ == "__main__":
         
         print("[BIASTOOLS] SAMPLE", bam_file, " as ", sample_id + ".baseline ...")
         command = ["python3", "sample_baseline.py", "-b", bam_file, "-f", path_ref, "-o", prefix+".sample"]
-        print(' '.join(command))
+        #print(' '.join(command))
         subprocess.call(command)
         
         if Range == None:
@@ -214,7 +214,7 @@ if __name__ == "__main__":
             print("[BIASTOOLS] Extract reads from " + Range + "...")
             target_bam = prefix + '.range.bam'
             command = ["samtools", "view", " -h", bam_file, Range, "-o", target_bam, "-@", thread]
-            print(' '.join(command))
+            #print(' '.join(command))
             subprocess.call(command)
 
         print("[BIASTOOLS] Format the mpileup...")
@@ -226,7 +226,7 @@ if __name__ == "__main__":
                        "--min-BQ", "0", \
                        "--min-MQ", "0", \
                        "--threads", str(thread), target_bam, "-o", prefix+'.'+run_id+'.mpileup']
-            print(' '.join(command))
+            #print(' '.join(command))
             subprocess.call(command)
         print("[BIASTOOLS] Scanning bias...")
         if flag_wig:
@@ -235,7 +235,7 @@ if __name__ == "__main__":
         else:
             command = ["python3", "scanning_bias.py", "-g", prefix+'.'+run_id+'.mpileup', "--sample", "-b", prefix+".sample.baseline", \
                        "-o", prefix+'.'+run_id+'.scanning']
-        print(' '.join(command))
+        #print(' '.join(command))
         subprocess.call(command)
     
     if flag_compare_bam:
@@ -253,13 +253,13 @@ if __name__ == "__main__":
         print("[Biastools] Generate common baseline...")
         baseline = prefix+"."+run_id+".combine"
         command = ["python3", "merge_baseline.py", "-b1", bam_file, "-b2", bam_file2, "-f", path_ref, "-o", baseline]
-        print(' '.join(command))
+        #print(' '.join(command))
         subprocess.call(command)
         command = ' '.join(["python3", "scanning_bias.py", "-g", mpileup_file,  "-b", baseline+".baseline", "-o", baseline+".1.scanning", ">", prefix+"."+run_id+".log"])
-        print(command)
+        #print(command)
         subprocess.call(command, shell=True)
         command = ' '.join(["python3", "scanning_bias.py", "-g", mpileup_file2, "-b", baseline+".baseline", "-o", baseline+".2.scanning", ">", prefix+"."+run_id+".log"])
-        print(command)
+        #print(command)
         subprocess.call(command, shell=True)
 
         print("[Biastools] Compare two bam files with common baseline...")
@@ -267,12 +267,12 @@ if __name__ == "__main__":
                             baseline+".1.scanning.bias.bed", \
                             baseline+".2.scanning.bias.bed", \
                             baseline+".2.scanning.lowRd.bed"])
-        print(command)
+        #print(command)
         subprocess.call(command, shell=True)
     if flag_compare_rpt:
         print("[Biastools] Compare two bed files...")
         command = ' '.join(["bash biastools_compare.sh", path_output, sample_id, run_id, bed_file1, bed_file2, lowRd_file2])
-        print(command)
+        #print(command)
         subprocess.call(command, shell=True)
 
 
