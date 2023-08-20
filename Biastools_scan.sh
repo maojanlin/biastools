@@ -28,9 +28,9 @@ Help() {
    echo "    -m path     Path to the alignment mpileup file."
    echo "    -M path     Path to the alignment mpileup file."
    echo "  @3[compare]"
-   echo "    -b path     Path to 'target' bam file, should be already sorted"
-   echo "    -B path     Path to 'improved' bam file, should be already sorted"
-   echo "    -l path     Path to the aligner index (target reference)"
+   echo "    -b path     Path to 'target' bed file."
+   echo "    -B path     Path to 'improved' bed file."
+   echo "    -l path     Path to the .lowRd.bed report of the 'improved' file."
    echo
    exit 1
 }
@@ -124,7 +124,7 @@ if [[ ${flag_compare_baseline} == 1 ]]; then
         samtools index ${bam_file}
     fi
     if [[ ! -f ${bam_file_2}.bai ]]; then
-        samtools index ${bam_file}
+        samtools index ${bam_file_2}
     fi
 
     echo "[Biastools] Generate common baseline..."
