@@ -6,6 +6,7 @@ THR=$5
 ALN=$6
 ALN_IDX=$7
 run_id=$8
+path_module=$9
 prefix=${path_out}/${sample_id}
 
 echo "[Biastools] Align sequences to the original reference"
@@ -22,7 +23,6 @@ if [[ ${ALN} == "bowtie2" ]]; then
         samtools sort -o ${prefix}.hapA.${run_id}.sorted.bam  
     bowtie2 -p ${THR} -x ${ALN_IDX} --rg-id ${run_id}_hapB --rg SM:${sample_id} -1 ${prefix}.hapB_1.fq.gz -2 ${prefix}.hapB_2.fq.gz |\
         samtools sort -o ${prefix}.hapB.${run_id}.sorted.bam 
-    samtools merge -f ${prefix}.${run_id}.sorted.bam ${prefix}.hapA.${run_id}.sorted.bam ${prefix}.hapB.${run_id}.sorted.bam
 elif [[ ${ALN} == "bwamem" ]]; then
     echo "[Biastools] Align with BWA MEM"
     if [ ! -f ${ALN_IDX}.bwt ]; then
@@ -32,10 +32,14 @@ elif [[ ${ALN} == "bwamem" ]]; then
         samtools sort -@ ${THR} -o ${prefix}.hapA.${run_id}.sorted.bam -
     bwa mem -t ${THR} ${ALN_IDX} ${prefix}.hapB_1.fq.gz ${prefix}.hapB_2.fq.gz -R "@RG\tID:${run_id}_hapB\tSM:${sample_id}" |\
         samtools sort -@ ${THR} -o ${prefix}.hapB.${run_id}.sorted.bam -
-    samtools merge -f ${prefix}.${run_id}.sorted.bam ${prefix}.hapA.${run_id}.sorted.bam ${prefix}.hapB.${run_id}.sorted.bam
 fi
+samtools merge -f ${prefix}.${run_id}.sorted.bam ${prefix}.hapA.${run_id}.sorted.bam ${prefix}.hapB.${run_id}.sorted.bam
 
 echo "[Biastools] Intersect the bam file and vcf file"
+if [ ! -f ${prefix}.het.vcf.gz ]; then
+    python3 ${path_module}filter_het_VCF.py -v ${prefix}.normalized.vcf.gz  -o ${prefix}.het.vcf.gz
+    tabix -p vcf ${prefix}.het.vcf.gz
+fi
 bedtools intersect -a ${prefix}.${run_id}.sorted.bam -b ${prefix}.het.vcf.gz | samtools view -bo ${prefix}.${run_id}.sorted.het.bam
 samtools index ${prefix}.${run_id}.sorted.het.bam
 

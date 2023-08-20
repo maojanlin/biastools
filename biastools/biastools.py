@@ -71,6 +71,9 @@ def main():
     flag_align    = args.align
     flag_analyze  = args.analyze
     flag_predict  = args.predict
+
+    path_scripts = os.path.dirname(__file__) + '/../scripts/'
+    path_module  = os.path.dirname(__file__) + '/'
     assert flag_simulate + flag_align + flag_analyze + flag_predict >= 1, "at least one of the --simulate/align/analyze/predict option should be specified."
 
     flag_force = args.force
@@ -118,7 +121,7 @@ def main():
         assert path_ref != None, "--genome should be specified when using --simulate"
         assert path_vcf != None, "--vcf should be specified when using --simulate"
         print("[Biastools] Simulate...")
-        command = ' '.join(["bash biastools_simulation.sh", path_ref, path_vcf, path_output, sample_id, str(thread), str(coverage)])
+        command = ' '.join(["bash", path_scripts+"biastools_simulation.sh", path_ref, path_vcf, path_output, sample_id, str(thread), str(coverage), path_module])
         #print(command)
         subprocess.call(command, shell=True)
     if flag_align:
@@ -127,31 +130,31 @@ def main():
         if align_index == None:
             align_index = path_ref
         print("[Biastools] Align...")
-        command = ' '.join(["bash biastools_align.sh", path_ref, path_vcf, path_output, sample_id, str(thread), aligner, align_index, run_id])
+        command = ' '.join(["bash", path_scripts+"biastools_align.sh", path_ref, path_vcf, path_output, sample_id, str(thread), aligner, align_index, run_id, path_module])
         #print(command)
         subprocess.call(command, shell=True)
     if flag_analyze:
         if list_report != None:
             print("[Biastools] Plot the indel balance plot for multiple bias reports...")
             if flag_real:
-                subprocess.call(['python3', 'indel_balance_plot.py', "-lr", ' '.join(list_report), "-ln", ' '.join(list_run_id), \
+                subprocess.call(['python3', path_module+'indel_balance_plot.py', "-lr", ' '.join(list_report), "-ln", ' '.join(list_run_id), \
                                             "-vcf", path_output+"/"+sample_id+".het.vcf.gz", "-bd", str(boundary), "-map", \
                                             "-out", path_output+"/"+sample_id+"."+run_id+".real", "-real"])
             else:
-                subprocess.call(['python3', 'indel_balance_plot.py', "-lr"] + list_report + ["-ln"] + list_run_id + [ \
+                subprocess.call(['python3', path_module+'indel_balance_plot.py', "-lr"] + list_report + ["-ln"] + list_run_id + [ \
                                             "-vcf", path_output+"/"+sample_id+".het.vcf.gz", "-bd", str(boundary), "-map", \
                                             "-out", path_output+"/"+sample_id+"."+run_id+".sim"])
         else:
             assert path_ref != None, "--genome should be specified when using --analyze"
             assert path_vcf != None, "--vcf should be specified when using --analyze"
             print("[Biastools] Analyze and plot...")
-            command = ' '.join(["bash biastools_analysis.sh", path_ref, path_vcf, path_output, sample_id, str(thread), run_id, bool2str(flag_real), \
-                                bool2str(flag_naive), str(boundary)])
+            command = ' '.join(["bash", path_scripts+"biastools_analysis.sh", path_ref, path_vcf, path_output, sample_id, str(thread), run_id, bool2str(flag_real), \
+                                bool2str(flag_naive), str(boundary), path_module])
             #print(command)
             subprocess.call(command, shell=True)
     if flag_predict:
         print("[Biastools] Predict bias...")
-        command = ' '.join(["bash biastools_predict.sh", path_output, sample_id, run_id, bool2str(flag_real), real_report, sim_report])
+        command = ' '.join(["bash", path_scripts+"biastools_predict.sh", path_output, sample_id, run_id, bool2str(flag_real), real_report, sim_report, path_module])
         #print(command)
         subprocess.call(command, shell=True)
 

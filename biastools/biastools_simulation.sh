@@ -4,6 +4,7 @@ path_out=$3
 sample_id=$4
 THR=$5
 coverage=$6
+path_module=$7
 prefix=${path_out}/${sample_id}
 
 if [ ! -f "${path_ref}.fai" ]; then
@@ -40,11 +41,11 @@ gzip -f ${prefix}.hapB_1.fq
 gzip -f ${prefix}.hapB_2.fq
 
 echo "[Biastools] Filter the heterozygous site in vcf file"
-python3 filter_het_VCF.py -v ${prefix}.normalized.vcf.gz  -o ${prefix}.het.vcf.gz
+python3 ${path_module}filter_het_VCF.py -v ${prefix}.normalized.vcf.gz  -o ${prefix}.het.vcf.gz
 tabix -p vcf ${prefix}.het.vcf.gz
 
 echo "[Biastools] Generate golden distribution report"
-python3 consensus_vcf_map_adaptive.py -v ${prefix}.het.vcf.gz \
+python3 ${path_module}consensus_vcf_map_adaptive.py -v ${prefix}.het.vcf.gz \
     -c0 ${prefix}.ref2hapA.chain \
     -c1 ${prefix}.ref2hapB.chain \
     -f0 ${prefix}.hapA.fa \

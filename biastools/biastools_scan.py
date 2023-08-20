@@ -69,6 +69,8 @@ def main():
     command = "mkdir -p " + path_output
     subprocess.call(command, shell=True)
     prefix = path_output + '/' + sample_id 
+    path_scripts = os.path.dirname(__file__) + '/../scripts/'
+    path_module  = os.path.dirname(__file__) + '/'
     if flag_scan:
         print("[Biastools] Scanning...")
         if os.path.exists(bam_file+'.bai'):
@@ -78,7 +80,7 @@ def main():
             subprocess.call(command)
         
         print("[BIASTOOLS] SAMPLE", bam_file, " as ", sample_id + ".baseline ...")
-        command = ["python3", "sample_baseline.py", "-b", bam_file, "-f", path_ref, "-o", prefix+".sample"]
+        command = ["python3", path_module+"sample_baseline.py", "-b", bam_file, "-f", path_ref, "-o", prefix+".sample"]
         print(' '.join(command))
         subprocess.call(command)
         
@@ -105,10 +107,10 @@ def main():
             subprocess.call(command)
         print("[BIASTOOLS] Scanning bias...")
         if flag_wig:
-            command = ["python3", "scanning_bias.py", "-g", prefix+'.'+run_id+'.mpileup', "--sample", "-b", prefix+".sample.baseline", \
+            command = ["python3", path_module+"scanning_bias.py", "-g", prefix+'.'+run_id+'.mpileup', "--sample", "-b", prefix+".sample.baseline", \
                        "-wig", "-o", prefix+'.'+run_id+'.scanning']
         else:
-            command = ["python3", "scanning_bias.py", "-g", prefix+'.'+run_id+'.mpileup', "--sample", "-b", prefix+".sample.baseline", \
+            command = ["python3", path_module+"scanning_bias.py", "-g", prefix+'.'+run_id+'.mpileup', "--sample", "-b", prefix+".sample.baseline", \
                        "-o", prefix+'.'+run_id+'.scanning']
         print(' '.join(command))
         subprocess.call(command)
@@ -127,26 +129,27 @@ def main():
 
         print("[Biastools] Generate common baseline...")
         baseline = prefix+"."+run_id+".combine"
-        command = ["python3", "merge_baseline.py", "-b1", bam_file, "-b2", bam_file2, "-f", path_ref, "-o", baseline]
-        print(' '.join(command))
+        command = ["python3", path_module+"merge_baseline.py", "-b1", bam_file, "-b2", bam_file2, "-f", path_ref, "-o", baseline]
+        #print(' '.join(command))
         subprocess.call(command)
-        command = ' '.join(["python3", "scanning_bias.py", "-g", mpileup_file,  "-b", baseline+".baseline", "-o", baseline+".1.scanning", ">", prefix+"."+run_id+".log"])
-        print(command)
+        command = ' '.join(["python3", path_module+"scanning_bias.py", "-g", mpileup_file,  "-b", baseline+".baseline", "-o", baseline+".1.scanning", ">", prefix+"."+run_id+".log"])
+        #print(command)
         subprocess.call(command, shell=True)
-        command = ' '.join(["python3", "scanning_bias.py", "-g", mpileup_file2, "-b", baseline+".baseline", "-o", baseline+".2.scanning", ">", prefix+"."+run_id+".log"])
-        print(command)
+        command = ' '.join(["python3", path_module+"scanning_bias.py", "-g", mpileup_file2, "-b", baseline+".baseline", "-o", baseline+".2.scanning", ">", prefix+"."+run_id+".log"])
+        #print(command)
         subprocess.call(command, shell=True)
 
         print("[Biastools] Compare two bam files with common baseline...")
-        command = ' '.join(["bash biastools_compare.sh", path_output, sample_id, run_id, \
+        command = ' '.join(["bash", path_scripts+"biastools_compare.sh", path_output, sample_id, run_id, \
                             baseline+".1.scanning.bias.bed", \
                             baseline+".2.scanning.bias.bed", \
-                            baseline+".2.scanning.lowRd.bed"])
+                            baseline+".2.scanning.lowRd.bed", \
+                            path_module])
         print(command)
         subprocess.call(command, shell=True)
     if flag_compare_rpt:
         print("[Biastools] Compare two bed files...")
-        command = ' '.join(["bash biastools_compare.sh", path_output, sample_id, run_id, bed_file1, bed_file2, lowRd_file2])
+        command = ' '.join(["bash", path_scripts+"biastools_compare.sh", path_output, sample_id, run_id, bed_file1, bed_file2, lowRd_file2, path_module])
         print(command)
         subprocess.call(command, shell=True)
 

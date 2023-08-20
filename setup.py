@@ -19,6 +19,12 @@ setup(
           'scikit-learn',
           'scipy'
       ],
+  data_files=[('scripts', ['biastools/biastools_align.sh', 
+                           'biastools/biastools_compare.sh',
+                           'biastools/biastools_simulation.sh',
+                           'biastools/biastools_analysis.sh',
+                           'biastools/biastools_predict.sh'])],
+  zip_safe = False,
   classifiers=[
     'Development Status :: 3 - Alpha',
     'Intended Audience :: Developers',
@@ -31,4 +37,6 @@ setup(
   ],
   entry_points={"console_scripts": ["biastools = biastools.biastools:main","biastools_scan = biastools.biastools_scan:main"],},
 )
+
+
 
