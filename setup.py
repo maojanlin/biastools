@@ -8,7 +8,7 @@ setup(
   author = 'Mao-Jan Lin',
   author_email = 'mj.maojanlin@gmail.com',
   url = 'https://github.com/maojanlin/biastools',
-  download_url = 'https://github.com/maojanlin/biastools/archive/v_01.tar.gz',
+  download_url = 'https://github.com/maojanlin/biastools/tarball/master',
   keywords = ['biastools', 'reference bias', 'alignment'],
   install_requires=[
           'numpy',
@@ -19,11 +19,12 @@ setup(
           'scikit-learn',
           'scipy'
       ],
-  data_files=[('scripts', ['biastools/biastools_align.sh', 
-                           'biastools/biastools_compare.sh',
-                           'biastools/biastools_simulation.sh',
-                           'biastools/biastools_analysis.sh',
-                           'biastools/biastools_predict.sh'])],
+  include_package_data=True,
+  data_files=[('biastools', ['biastools/biastools_align.sh',
+                             'biastools/biastools_compare.sh',
+                             'biastools/biastools_simulation.sh',
+                             'biastools/biastools_analysis.sh',
+                             'biastools/biastools_predict.sh'])],
   zip_safe = False,
   classifiers=[
     'Development Status :: 3 - Alpha',

@@ -69,8 +69,7 @@ def main():
     command = "mkdir -p " + path_output
     subprocess.call(command, shell=True)
     prefix = path_output + '/' + sample_id 
-    path_scripts = os.path.dirname(__file__) + '/../scripts/'
-    path_module  = os.path.dirname(__file__) + '/'
+    path_module = os.path.dirname(__file__) + '/'
     if flag_scan:
         print("[Biastools] Scanning...")
         if os.path.exists(bam_file+'.bai'):
@@ -140,7 +139,7 @@ def main():
         subprocess.call(command, shell=True)
 
         print("[Biastools] Compare two bam files with common baseline...")
-        command = ' '.join(["bash", path_scripts+"biastools_compare.sh", path_output, sample_id, run_id, \
+        command = ' '.join(["bash", path_module+"biastools_compare.sh", path_output, sample_id, run_id, \
                             baseline+".1.scanning.bias.bed", \
                             baseline+".2.scanning.bias.bed", \
                             baseline+".2.scanning.lowRd.bed", \
@@ -149,7 +148,7 @@ def main():
         subprocess.call(command, shell=True)
     if flag_compare_rpt:
         print("[Biastools] Compare two bed files...")
-        command = ' '.join(["bash", path_scripts+"biastools_compare.sh", path_output, sample_id, run_id, bed_file1, bed_file2, lowRd_file2, path_module])
+        command = ' '.join(["bash", path_module+"biastools_compare.sh", path_output, sample_id, run_id, bed_file1, bed_file2, lowRd_file2, path_module])
         print(command)
         subprocess.call(command, shell=True)
 

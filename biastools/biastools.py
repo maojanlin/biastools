@@ -72,8 +72,7 @@ def main():
     flag_analyze  = args.analyze
     flag_predict  = args.predict
 
-    path_scripts = os.path.dirname(__file__) + '/../scripts/'
-    path_module  = os.path.dirname(__file__) + '/'
+    path_module = os.path.dirname(__file__) + '/'
     assert flag_simulate + flag_align + flag_analyze + flag_predict >= 1, "at least one of the --simulate/align/analyze/predict option should be specified."
 
     flag_force = args.force
@@ -121,7 +120,7 @@ def main():
         assert path_ref != None, "--genome should be specified when using --simulate"
         assert path_vcf != None, "--vcf should be specified when using --simulate"
         print("[Biastools] Simulate...")
-        command = ' '.join(["bash", path_scripts+"biastools_simulation.sh", path_ref, path_vcf, path_output, sample_id, str(thread), str(coverage), path_module])
+        command = ' '.join(["bash", path_module+"biastools_simulation.sh", path_ref, path_vcf, path_output, sample_id, str(thread), str(coverage), path_module])
         #print(command)
         subprocess.call(command, shell=True)
     if flag_align:
@@ -130,7 +129,7 @@ def main():
         if align_index == None:
             align_index = path_ref
         print("[Biastools] Align...")
-        command = ' '.join(["bash", path_scripts+"biastools_align.sh", path_ref, path_vcf, path_output, sample_id, str(thread), aligner, align_index, run_id, path_module])
+        command = ' '.join(["bash", path_module+"biastools_align.sh", path_ref, path_vcf, path_output, sample_id, str(thread), aligner, align_index, run_id, path_module])
         #print(command)
         subprocess.call(command, shell=True)
     if flag_analyze:
@@ -148,13 +147,13 @@ def main():
             assert path_ref != None, "--genome should be specified when using --analyze"
             assert path_vcf != None, "--vcf should be specified when using --analyze"
             print("[Biastools] Analyze and plot...")
-            command = ' '.join(["bash", path_scripts+"biastools_analysis.sh", path_ref, path_vcf, path_output, sample_id, str(thread), run_id, bool2str(flag_real), \
+            command = ' '.join(["bash", path_module+"biastools_analysis.sh", path_ref, path_vcf, path_output, sample_id, str(thread), run_id, bool2str(flag_real), \
                                 bool2str(flag_naive), str(boundary), path_module])
             #print(command)
             subprocess.call(command, shell=True)
     if flag_predict:
         print("[Biastools] Predict bias...")
-        command = ' '.join(["bash", path_scripts+"biastools_predict.sh", path_output, sample_id, run_id, bool2str(flag_real), real_report, sim_report, path_module])
+        command = ' '.join(["bash", path_module+"biastools_predict.sh", path_output, sample_id, run_id, bool2str(flag_real), real_report, sim_report, path_module])
         #print(command)
         subprocess.call(command, shell=True)
 
