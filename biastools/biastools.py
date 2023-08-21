@@ -78,7 +78,10 @@ def main():
     flag_force = args.force
     thread = args.thread
     if thread == None:
-        result = subprocess.run(["nproc"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True)
+        if sys.platform == "darwin":
+            result = subprocess.run(["sysctl -n hw.ncpu"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True)
+        else:
+            result = subprocess.run(["nproc"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True)
         thread = int(result.stdout.strip())
     
     coverage = args.coverage
