@@ -1,17 +1,41 @@
-_Updated: Aug 12, 2023_
+_Updated: Aug 21, 2023_
 # Biastools: Measuring, visualizing and diagnosing reference bias
 
 This github is originally forked from https://github.com/sheila12345/biastools
 
 ## Prerequisite programs:
-samtools=v1.11
-bcftools=v1.9
-bedtools=v2.30.0
-gzip=v1.9
-tabix=v1.9
-bowtie2=v2.4.2
-bwa=v0.7.17
-mason_simulator=v2.0.9 (SeqAn=v2.4.0)
+- samtools=v1.11
+- bcftools=v1.9
+- bedtools=v2.30.0
+- gzip=v1.9
+- tabix=v1.9
+- bowtie2=v2.4.2
+- bwa=v0.7.17
+- mason_simulator=v2.0.9 (SeqAn=v2.4.0)
+  
+Not all the programs are necessary for every stage. Users can use `--force` option to disable the prerequisite checking when running biastools
+
+## Install
+- [pip](https://pypi.org/project/biastools/)
+```
+pip install biastools
+```
+- [Github](https://github.com/maojanlin/biastools.git)
+```
+git clone https://github.com/maojanlin/biastools.git
+cd biastools
+```
+Though optional, it is a good practice to setup a virtual environment to manage the dependancies:
+
+```
+python -m venv venv
+source venv/bin/activate
+```
+Now a virtual environment (named venv) is activated:
+
+```
+python setup.py install
+```
 
 
 ## Usage:
