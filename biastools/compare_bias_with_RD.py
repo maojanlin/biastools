@@ -27,12 +27,14 @@ def compare_bias_regions(dict_target, dict_improve, dict_lowRd, out_file):
     total_100 = []
     total_75 = []
     total_50 = []
-    total_under_50 = []
+    total_25 = []
+    total_under_25 = []
     for contig in sorted(dict_target.keys()):
         local_100 = []
         local_75 = []
         local_50 = []
-        local_under_50 = []
+        local_25 = []
+        local_under_25 = []
 
         region_target  = dict_target [contig]
         region_improve = dict_improve[contig]
@@ -74,22 +76,27 @@ def compare_bias_regions(dict_target, dict_improve, dict_lowRd, out_file):
             elif improve_len >= len_region_1*0.75:
                 local_75.append(region)
                 f_o.write(contig + '\t' + str(start_1) + '\t' + str(stop_1) + '\t' + '75;' + str(len_region_1) + ';' + str(len_region_2) + ';' + str(len_region_3) + '\n')
-            elif len_region_2 >= len_region_1*0.5:
+            elif improve_len >= len_region_1*0.5:
                 local_50.append(region)
                 f_o.write(contig + '\t' + str(start_1) + '\t' + str(stop_1) + '\t' + '50;' + str(len_region_1) + ';' + str(len_region_2) + ';' + str(len_region_3) + '\n')
+            elif improve_len >= len_region_1*0.25:
+                local_25.append(region)
+                f_o.write(contig + '\t' + str(start_1) + '\t' + str(stop_1) + '\t' + '25;' + str(len_region_1) + ';' + str(len_region_2) + ';' + str(len_region_3) + '\n')
             else:
-                local_under_50.append(region)
+                local_under_25.append(region)
         total_100 += local_100
         total_75  += local_75
         total_50  += local_50
-        total_under_50 += local_under_50
-        print(contig, len(local_100), len(local_75), len(local_50), len(local_under_50))
+        total_25  += local_25
+        total_under_25 += local_under_25
+        print(contig, len(local_100), len(local_75), len(local_50), len(local_25), len(local_under_25))
     f_o.close()
-    len_total = sum([len(total_100), len(total_75), len(total_50), len(total_under_50)])
+    len_total = sum([len(total_100), len(total_75), len(total_50), len(local_25), len(total_under_25)])
     print(len(total_100), round(len(total_100)/len_total,3), \
           len(total_75),  round(len(total_75)/len_total,3),  \
           len(total_50),  round(len(total_50)/len_total,3),  \
-          len(total_under_50), round(len(total_under_50)/len_total,3))
+          len(total_25),  round(len(total_25)/len_total,3),  \
+          len(total_under_25), round(len(total_under_25)/len_total,3))
 
 
 
