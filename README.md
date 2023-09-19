@@ -1,4 +1,5 @@
-_Updated: Sep 6, 2023_
+
+_Updated: Sep 19, 2023_
 # Biastools: Measuring, visualizing and diagnosing reference bias
 
 This github is originally forked from https://github.com/sheila12345/biastools
@@ -13,6 +14,29 @@ This github is originally forked from https://github.com/sheila12345/biastools
 - bwa=v0.7.17
 - mason_simulator=v2.0.9
 - SeqAn=v2.4.0
+  
+
+## Install
+- [pip](https://pypi.org/project/biastools/)
+```
+pip install biastools
+```
+- [Github](https://github.com/maojanlin/biastools.git)
+```
+git clone https://github.com/maojanlin/biastools.git
+cd biastools
+```
+Though optional, it is a good practice to install a virtual environment to manage the dependancies:
+
+```
+python -m venv venv
+source venv/bin/activate
+```
+Now a virtual environment (named venv) is activated:
+
+```
+python setup.py install
+```
 
 
 ## Usage
