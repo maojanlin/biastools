@@ -3,7 +3,7 @@ import subprocess
 import sys
 import os
 import argparse
-from biastools.biastools import check_program_install
+from biastools.biastools import check_program_install, catch_assert
 
 
 def main():
@@ -42,7 +42,10 @@ def main():
     flag_scan        = args.scan
     flag_compare_bam = args.compare_bam
     flag_compare_rpt = args.compare_rpt
-    assert flag_scan + flag_compare_bam + flag_compare_rpt >= 1, "at least one of the --scan/compare_bam/compare_rpt option should be specified."
+    try:
+        assert flag_scan + flag_compare_bam + flag_compare_rpt >= 1 
+    except AssertionError:
+        catch_assert(parser, "At least one of the --scan/compare_bam/compare_rpt option should be specified.")
 
     flag_force = args.force
     thread = args.thread

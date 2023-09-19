@@ -17,7 +17,8 @@ def check_program_install(list_names):
             print(name, "is a prerequisite program, please install it before running biastools")
             flag_violate = True
     if flag_violate:
-        exit()
+        print("Use --force option if you want to disable the prerequisite program check.")
+        exit(1)
 
 
 def bool2str(flag):
@@ -27,10 +28,16 @@ def bool2str(flag):
         return "0"
 
 
+def catch_assert(parser, message):
+    print('\n', message, '\n')
+    parser.print_usage()
+    exit(1)
+
+
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Simulation/Alignment/Analyzing/Prediction module of the Biastools.")
     parser.add_argument('-o', '--out', help="Path to output directory ['out_dir'].", default="out_dir")
     parser.add_argument('-g', '--genome', help="Path to the reference genome.")
     parser.add_argument('-v', '--vcf', help="Path to the personal vcf file.")
@@ -73,7 +80,10 @@ def main():
     flag_predict  = args.predict
 
     path_module = os.path.dirname(__file__) + '/'
-    assert flag_simulate + flag_align + flag_analyze + flag_predict >= 1, "at least one of the --simulate/align/analyze/predict option should be specified."
+    try:
+        assert flag_simulate + flag_align + flag_analyze + flag_predict >= 1 
+    except AssertionError:
+        catch_assert(parser, "At least one of the --simulate/align/analyze/predict option should be specified.")
 
     flag_force = args.force
     thread = args.thread
@@ -86,8 +96,11 @@ def main():
     
     coverage = args.coverage
     aligner  = args.aligner
-    assert aligner=="bowtie2" or aligner=="bwamem", "only bowtie2 and bwamem are supported."
     align_index = args.align_index
+    try:
+        assert aligner=="bowtie2" or aligner=="bwamem" 
+    except AssertionError:
+        catch_assert(parser, "Only bowtie2 and bwamem are supported.")
 
     flag_naive  = args.naive
     flag_real   = args.real
@@ -95,40 +108,54 @@ def main():
     list_report = args.list_report
     list_run_id = args.list_run_id
     if list_report:
-        assert len(list_report) == len(list_run_id), " Number of list --list_report and --list_run_id entries are inconsistent."
+        try:
+            assert len(list_report) == len(list_run_id)
+        except AssertionError:
+            catch_assert(parser, "Number of list --list_report and --list_run_id entries are inconsistent.")
 
     sim_report  = args.sim_report
     real_report = args.real_report
     if flag_predict: 
-        assert real_report != None, "--real_report should be specified when using --predict"
+        try:
+            assert real_report != None
+        except AssertionError:
+            catch_assert(parser, "<real_report> should be specified when using --predict")
 
 
     
     # Checking prerequisite programs are installed
     if flag_force != True:
-        check_program_install(["bedtools", \
-                               "samtools", \
-                               "bcftools", \
-                               "bwa", \
-                               "bowtie2", \
-                               "gzip", \
-                               "tabix", \
-                               "mason_simulator"])
+        list_program = ["bedtools", \
+                         "samtools", \
+                         "bcftools", \
+                         "gzip", \
+                         "tabix"]
+        if flag_align:
+            list_program += ["bwa", "bowtie2"]
+        if flag_simulate:
+            list_program.append("mason_simulator")
+        check_program_install( list_program ) 
 
     # Start running
     command = "mkdir -p " + path_output
     subprocess.call(command, shell=True)
 
     if flag_simulate:
-        assert path_ref != None, "--genome should be specified when using --simulate"
-        assert path_vcf != None, "--vcf should be specified when using --simulate"
+        try:
+            assert path_ref != None
+            assert path_vcf != None 
+        except AssertionError:
+            catch_assert(parser, "<genome> and <vcf> should be specified when using --simulate")
         print("[Biastools] Simulate...")
         command = ' '.join(["bash", path_module+"biastools_simulation.sh", path_ref, path_vcf, path_output, sample_id, str(thread), str(coverage), path_module])
         #print(command)
         subprocess.call(command, shell=True)
     if flag_align:
-        assert path_ref != None, "--genome should be specified when using --align"
-        assert path_vcf != None, "--vcf should be specified when using --align"
+        try:
+            assert path_ref != None
+            assert path_vcf != None
+        except AssertionError:
+            catch_assert(parser, "<genome> and <vcf> should be specified when using --align")
         if align_index == None:
             align_index = path_ref
         print("[Biastools] Align...")
@@ -147,8 +174,11 @@ def main():
                                             "-vcf", path_output+"/"+sample_id+".het.vcf.gz", "-bd", str(boundary), "-map", \
                                             "-out", path_output+"/"+sample_id+"."+run_id+".sim"])
         else:
-            assert path_ref != None, "--genome should be specified when using --analyze"
-            assert path_vcf != None, "--vcf should be specified when using --analyze"
+            try:
+                assert path_ref != None
+                assert path_vcf != None
+            except AssertionError:
+                catch_assert(parser, "<genome> and <vcf> should be specified when using --analyze")
             print("[Biastools] Analyze and plot...")
             command = ' '.join(["bash", path_module+"biastools_analysis.sh", path_ref, path_vcf, path_output, sample_id, str(thread), run_id, bool2str(flag_real), \
                                 bool2str(flag_naive), str(boundary), path_module])
