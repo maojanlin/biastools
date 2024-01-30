@@ -4,7 +4,7 @@ _Updated: Sep 19, 2023_
 
 This github is originally forked from https://github.com/sheila12345/biastools
 
-## Prerequisite programs:
+## Prerequisite programs
 - samtools=v1.11
 - bcftools=v1.9
 - bedtools=v2.30.0
@@ -12,11 +12,11 @@ This github is originally forked from https://github.com/sheila12345/biastools
 - tabix=v1.9
 - bowtie2=v2.4.2
 - bwa=v0.7.17
-- mason_simulator=v2.0.9
-- SeqAn=v2.4.0
+- mason_simulator=v2.0.9 (only for biastools --simulate)
+- SeqAn=v2.4.0 (only for biastools --simulate)
   
 
-## Install
+## Installation
 - [pip](https://pypi.org/project/biastools/)
 ```
 pip install biastools
@@ -32,7 +32,7 @@ Though optional, it is a good practice to install a virtual environment to manag
 python -m venv venv
 source venv/bin/activate
 ```
-Now a virtual environment (named venv) is activated:
+Now a virtual environment (named venv) is activated. Install biastools:
 
 ```
 python setup.py install
