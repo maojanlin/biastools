@@ -449,8 +449,12 @@ def compare_sam_to_haps(
             continue
         
         if flag_real == False:
-            rg_tag           = segment.get_tag("RG")
-            chr_tag, hap_tag = rg_tag.split('_')
+            rg_tag = segment.get_tag("RG")
+            if '_' in rg_tag:
+                chr_tag, hap_tag = rg_tag.split('_')
+            else:
+                chr_tag = None
+                hap_tag = rg_tag
         related_vars = list(f_vcf.fetch(ref_name, pos_start, pos_end)) # list of pysam.variant
         direct_var_start  = set([var.start for var in related_vars ])
         if len(related_vars) > 0: # extend the related_vars if there are cohort in the boundary
