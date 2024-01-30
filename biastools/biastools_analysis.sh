@@ -33,7 +33,8 @@ if [[ ${flag_real} == 1 ]]; then
                                              -vcf ${prefix}.het.vcf.gz \
                                              -bd ${boundary} \
                                              -map \
-                                             -out ${r_prefix}.${run_id}.real
+                                             -out ${r_prefix}.${run_id}.real \
+                                             -real
 else
     python3 ${assign_method} -s ${prefix}.${run_id}.sorted.het.bam \
                              -v ${prefix}.het.vcf.gz \

@@ -206,6 +206,7 @@ def compare_sam_to_haps(
         # aligned read information
         ref_name     = segment.reference_name
         seq_name     = segment.query_name
+        flag_read_n  = segment.is_read2
         pos_start    = segment.reference_start # start position in genome coordiante, need +1 for vcf coordinate
         pos_end      = segment.reference_end
         cigar_tuples = segment.cigartuples
@@ -213,7 +214,12 @@ def compare_sam_to_haps(
         rg_tag       = segment.get_tag("RG")
         read_seq     = segment.query_alignment_sequence # aligned sequence without SoftClip part
         
-        chr_tag, hap_tag = rg_tag.split('_')
+        #chr_tag, hap_tag = rg_tag.split('_')
+        if '_' in rg_tag:
+            chr_tag, hap_tag = rg_tag.split('_')
+        else:
+            chr_tag = None
+            hap_tag = rg_tag
         related_vars = list(f_vcf.fetch(ref_name, pos_start, pos_end)) # list of pysam.variant
         #fetching the sequence in the read_seq regarding to the variant
         for var in related_vars:
@@ -283,14 +289,16 @@ def compare_sam_to_haps(
                 elif dict_ref_var_name[ref_name].get(var.start) == None:
                     continue
                 elif 'hapA' == hap_tag: # hapA
-                    if seq_name in dict_ref_var_name[ref_name][var.start][0]: # check if the read name is in the golden set
+                    #if seq_name in dict_ref_var_name[ref_name][var.start][0]: # check if the read name is in the golden set
+                    if (seq_name, flag_read_n) in dict_ref_var_name[ref_name][var.start][0]: # check if the read name is in the golden set
                         dict_ref_var_bias[ref_name][var.start]['n_read'][0] += 1
                         dict_ref_var_bias[ref_name][var.start]['map_q'][0]  += mapq
                     else:
                         dict_ref_var_bias[ref_name][var.start]['n_read'][2] += 1
                         dict_ref_var_bias[ref_name][var.start]['map_q'][2] += 1
                 elif 'hapB' == hap_tag: # hapB
-                    if seq_name in dict_ref_var_name[ref_name][var.start][1]: # check if the read name is in the golden set
+                    #if seq_name in dict_ref_var_name[ref_name][var.start][1]: # check if the read name is in the golden set
+                    if (seq_name, flag_read_n) in dict_ref_var_name[ref_name][var.start][1]: # check if the read name is in the golden set
                         dict_ref_var_bias[ref_name][var.start]['n_read'][1] += 1
                         dict_ref_var_bias[ref_name][var.start]['map_q'][1]  += mapq
                     else:
@@ -371,6 +379,7 @@ if __name__ == "__main__":
     parser.add_argument('-f', '--fasta', help='reference fasta file')
     parser.add_argument('-r', '--real_data', help='turn off hap_information warning for real data', action='store_true')
     parser.add_argument('-p', '--golden_pickle', help='the pickle file contain the golden information for report reference')
+    parser.add_argument('-t', '--run_id', help='the tag for run_id, can be used to indicate for example chromosome number')
     parser.add_argument('-o', '--out', help='output file')
     args = parser.parse_args()
     
@@ -380,6 +389,7 @@ if __name__ == "__main__":
     flag_real = args.real_data
     fn_golden = args.golden_pickle
     fn_output = args.out
+    run_id    = args.run_id
     
     f_vcf   = pysam.VariantFile(fn_vcf)
     f_sam   = pysam.AlignmentFile(fn_sam)

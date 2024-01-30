@@ -8,7 +8,14 @@ def parse_het_site(fn_vcf, fn_output):
     for segment in in_vcf_file:
         #hap_info = str(segment).split()[9].split('|') # "0|0", "1|0", "0|1" tag
         #if hap_info[0] != hap_info[1]:
-        hap_0, hap_1 = segment.samples[0]['GT']
+        phase_info = segment.samples[0]['GT']
+        if len(phase_info) != 2:
+            print("WARNING! non diploid haplotype.")
+            continue
+        hap_0, hap_1 = phase_info
+        if hap_0 == None or hap_1 == None:
+            print("WARNING! one haplotype information is missing.")
+            continue
         if hap_0 + hap_1 != 0:
             out_vcf_file.write(segment)
     in_vcf_file.close()

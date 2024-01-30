@@ -26,8 +26,8 @@ read_num=$(expr ${total_base} / 151 / 4 \* ${coverage})
 echo "generating ${read_num} 2x151 reads in each haplotype"
 
 echo "[Biastools] Simulate sequences"
-mason_simulator --illumina-read-length 151 -ir ${prefix}.hapA.fa -o ${prefix}.hapA_1.fq -or ${prefix}.hapA_2.fq -oa ${prefix}.gt.hapA.sam -n ${read_num}
-mason_simulator --illumina-read-length 151 -ir ${prefix}.hapB.fa -o ${prefix}.hapB_1.fq -or ${prefix}.hapB_2.fq -oa ${prefix}.gt.hapB.sam -n ${read_num}
+mason_simulator --illumina-read-length 151 --num-threads ${THR} -ir ${prefix}.hapA.fa -o ${prefix}.hapA_1.fq -or ${prefix}.hapA_2.fq -oa ${prefix}.gt.hapA.sam -n ${read_num}
+mason_simulator --illumina-read-length 151 --num-threads ${THR} -ir ${prefix}.hapB.fa -o ${prefix}.hapB_1.fq -or ${prefix}.hapB_2.fq -oa ${prefix}.gt.hapB.sam -n ${read_num} --seed 9388
 samtools sort -@ ${THR} ${prefix}.gt.hapA.sam > ${prefix}.gt.hapA.sorted.bam
 samtools sort -@ ${THR} ${prefix}.gt.hapB.sam > ${prefix}.gt.hapB.sorted.bam
 samtools index ${prefix}.gt.hapA.sorted.bam
