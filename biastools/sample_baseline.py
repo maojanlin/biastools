@@ -85,13 +85,18 @@ def sample_select(
     """
     random.seed(seed)
     fo = open(fn_sample + '.bed', 'w')
+    write_flag = False
     for idx, name in enumerate(f_bam.header.references):
         contig_len = f_bam.header.lengths[idx]
         if contig_len > min_len:
+            write_flag = True
             thousandth = int(contig_len / 100000)
             list_sample_start = random.sample(range(100000 - 1), 100)
             for sample_start in sorted(list_sample_start):
                 fo.write(name + ' ' + str(sample_start*thousandth) + ' ' + str(sample_start*thousandth+thousandth) + '\n')
+        elif write_flag == False:
+            fo.write(name + ' 1 ' + str(contig_len) + '\n')
+            write_flag = True
     fo.close()
 
 
