@@ -277,11 +277,11 @@ def check_coordinate(
 
             fetch_hap_0 = long_hap0[padding:-padding] 
             fetch_hap_1 = long_hap1[padding:-padding]
-            if seq_hap0.upper() != fetch_hap_0.upper():
-                print("Discrepency at", str(var_start), str(pos_map0), "haplotype 0! Expect", seq_hap0, ", get", fetch_hap_0, "...")
+            if seq_hap0.upper() != fetch_hap_0.upper() and seq_hap0 != '*':
+                print("Discrepency at", ref_name, str(var_start), str(pos_map0), "haplotype 0! Expect", seq_hap0, ", get", fetch_hap_0, "...")
                 count_discrepency += 1
-            if seq_hap1.upper() != fetch_hap_1.upper():
-                print("Discrepency at", str(var_start), str(pos_map1), "haplotype 1! Expect", seq_hap1, ", get", fetch_hap_1, "...")
+            if seq_hap1.upper() != fetch_hap_1.upper() and seq_hap1 != '*':
+                print("Discrepency at", ref_name, str(var_start), str(pos_map1), "haplotype 1! Expect", seq_hap1, ", get", fetch_hap_1, "...")
                 count_discrepency += 1
     print("Total Discrepency:", count_discrepency)
     return dict_effective_variant
