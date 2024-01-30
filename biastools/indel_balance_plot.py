@@ -131,7 +131,7 @@ def plot_balance(balance_delete, balance_SNP, balance_insert, output_name, len_b
     #colors = colors[:2] + colors[5:]
     #colors = colors[1:]
     for idx, name in enumerate(list_plot_name):
-        a0.errorbar(t, (1-balance_list[idx]), yerr=(balance_1st[idx], balance_3rd[idx]), capsize=3, fmt='-o', label=name, color=colors[idx])
+        a0.errorbar(t, (1-balance_list[idx]), yerr=(balance_3rd[idx], balance_1st[idx]), capsize=3, fmt='-o', label=name, color=colors[idx])
     
     a0.legend()
     #a0.set_ylim([0.3, 0.7])
