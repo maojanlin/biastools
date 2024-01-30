@@ -142,13 +142,15 @@ def plot_golden(out_prefix, df_use):
     sp['Category'] -= (biased * ~b_loss * b_artifact)*1
     labels = ['Balanced', 'Bias (Loss)', 'Bias (Flux)', 'Bias (Local)', 'Outliers']
 
+    custom_palette = sns.color_palette('Set2')
+    custom_palette = custom_palette[:4] + custom_palette[-1:]
     ax = sns.jointplot(x="Normalized Mapping Balance", y="Normalized Assignment Balance",  hue = "Category", data = sp, \
-            xlim=(-0.8,0.8), ylim=(-0.8,0.8), palette='Set2')
+            xlim=(-0.8,0.8), ylim=(-0.8,0.8), palette=custom_palette)
     ax.ax_joint.axhline(y=0, color='gray', linestyle='dashdot', linewidth=0.2)
     ax.ax_joint.axvline(x=0, color='gray', linestyle='dashdot', linewidth=0.2)
     ax.ax_joint.get_legend().remove()
     h, l = ax.ax_joint.get_legend_handles_labels()
-    plt.legend(h, labels, title="Category#", bbox_to_anchor=(0, 0), loc='lower left', borderaxespad=0.2)
+    plt.legend(h, labels, title="Category#", bbox_to_anchor=(1, 0), loc='lower right', borderaxespad=0.2)
     plt.savefig(out_prefix + '.category.pdf')
 
     print("-------------------------------------------")
@@ -159,6 +161,7 @@ def plot_golden(out_prefix, df_use):
     print("Number of outliers:", sum(sp['Category'] == 4))
     print("-------------------------------------------")
 
+    df_use.loc[(sp['Category'] == 0).values, :].to_csv(out_prefix + '.balanced.tsv', index=False, sep="\t")
     df_use.loc[((sp['Category'] == 1)*(sp['Normalized Assignment Balance'] > 0)).values, :].to_csv(out_prefix + '.bias-loss.1.tsv', index=False, sep="\t")
     df_use.loc[((sp['Category'] == 1)*(sp['Normalized Assignment Balance'] < 0)).values, :].to_csv(out_prefix + '.bias-loss.2.tsv', index=False, sep="\t")
     df_use.loc[((sp['Category'] == 2)*(sp['Normalized Assignment Balance'] > 0)).values, :].to_csv(out_prefix + '.bias-flux.1.tsv', index=False, sep="\t")
@@ -174,7 +177,7 @@ def plot_golden(out_prefix, df_use):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-mb', '--bias_report', help='bias report, must contain the golden information')
-    parser.add_argument('-qt', '--quality_threshold', help='threshold that filtered the sites with avg_mapQ below the threshold', type=int, default=0)
+    parser.add_argument('-qt', '--quality_threshold', help='threshold that filtered the sites with avg_mapQ below the threshold', type=int)
     parser.add_argument('-out', '--output_prefix', help='the prefix for the output plots and report')
     args = parser.parse_args()
     
@@ -185,7 +188,8 @@ if __name__ == "__main__":
         output_prefix = fn_bias
 
     df_use = pd.read_csv(fn_bias, sep='\t')
-    df_use = df_use[df_use['AVG_MAPQ'] >= mapQ_th]
+    if mapQ_th:
+        df_use = df_use[df_use['AVG_MAPQ'] >= mapQ_th]
     df_use.head()
 
     plot_golden(output_prefix, df_use)
