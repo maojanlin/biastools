@@ -57,6 +57,7 @@ def main():
     parser.add_argument('-a', '--aligner', help="Aligner to use (bowtie2|bwamem) [bowtie2]", default="bowtie2")
     parser.add_argument('-b', '--align_index', help="Path to the aligner index (target reference)")
     # [3]
+    parser.add_argument('-i', '--bam', help="Path to the alignment bam file, should be sorted [out_dir/sample.run_id.sorted.bam].")
     parser.add_argument('-n', '--naive', help= "Option to run the naive assignment method [False].", action='store_true')
     parser.add_argument('-R', '--real',  help= "Option for performing analysis on real data [False].", action='store_true')
     parser.add_argument('-d', '--boundary', help= "Boundary to plot the indel balance plot [20]", type=int, default=20)
@@ -73,6 +74,9 @@ def main():
     path_vcf   = args.vcf
     sample_id  = args.sample_id
     run_id     = args.run_id
+    bam_file   = args.bam
+    if bam_file == None:
+        bam_file = path_output + '/' + sample_id + '.' + run_id + '.sorted.bam'
     
     flag_simulate = args.simulate
     flag_align    = args.align
@@ -181,7 +185,7 @@ def main():
                 catch_assert(parser, "<genome> and <vcf> should be specified when using --analyze")
             print("[Biastools] Analyze and plot...")
             command = ' '.join(["bash", path_module+"biastools_analysis.sh", path_ref, path_vcf, path_output, sample_id, str(thread), run_id, bool2str(flag_real), \
-                                bool2str(flag_naive), str(boundary), path_module])
+                                bool2str(flag_naive), str(boundary), path_module, bam_file])
             #print(command)
             subprocess.call(command, shell=True)
     if flag_predict:
