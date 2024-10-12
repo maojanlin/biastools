@@ -9,9 +9,23 @@ flag_naive=$8
 boundary=$9
 path_module=${10}
 prefix=${path_out}/${sample_id}
+bam_file=${11}
+
+
+echo "[Biastools] Intersect the bam file and vcf file"
+if [ ! -f ${prefix}.het.vcf.gz ]; then
+    bcftools norm -f ${path_ref} ${path_vcf} -m +any -Oz -o ${prefix}.normalized.vcf.gz
+    bcftools index ${prefix}.normalized.vcf.gz
+    python3 ${path_module}filter_het_VCF.py -v ${prefix}.normalized.vcf.gz  -o ${prefix}.het.vcf.gz
+    tabix -p vcf ${prefix}.het.vcf.gz
+fi
+if [ ! -f ${prefix}.${run_id}.sorted.het.bam ]; then
+    bedtools intersect -a ${bam_file} -b ${prefix}.het.vcf.gz | samtools sort -@ ${THR} > ${prefix}.${run_id}.sorted.het.bam
+    samtools index ${prefix}.${run_id}.sorted.het.bam
+fi
+
 
 echo "[Biastools] Reference bias analysis"
-
 if [[ ${flag_naive} == 1 ]]; then
     assign_method=${path_module}"ref_bi_naive.py"
 else
