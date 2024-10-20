@@ -61,8 +61,10 @@ $ biastools --analyze -o <work_dir> -g <ref.fa> -v <vcf> -s <sample_name> -r <ru
 #### Real sequence data
 Biastools can also analyze real sequence data with the `-R` option using the context-aware assignment algorithm. The resulting plot does not include simulation information (`sample_id.real.indel_balance.pdf`).
 ```
-$ biastools --analyze -o <work_dir> -g <ref.fa> -v <vcf> -s <sample_name> -r <run_id> -R
+$ biastools --analyze -R -o <work_dir> -g <ref.fa> -v <vcf> -s <sample_name> -r <run_id> \
+                      --bam <path_to_target.bam>
 ```
+
 
 
 #### Multiple indel plots
