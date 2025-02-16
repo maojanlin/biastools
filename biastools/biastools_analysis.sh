@@ -20,7 +20,8 @@ if [ ! -f ${prefix}.het.vcf.gz ]; then
     tabix -p vcf ${prefix}.het.vcf.gz
 fi
 if [ ! -f ${prefix}.${run_id}.sorted.het.bam ]; then
-    bedtools intersect -a ${bam_file} -b ${prefix}.het.vcf.gz | samtools sort -@ ${THR} > ${prefix}.${run_id}.sorted.het.bam
+    python3 ${path_module}vcf_to_bed.py -v ${prefix}.het.vcf.gz -o ${prefix}.het.bed
+    samtools view -h -L ${prefix}.het.bed ${bam_file} -@ ${THR} | samtools sort -@ ${THR} > ${prefix}.${run_id}.sorted.het.bam
     samtools index ${prefix}.${run_id}.sorted.het.bam
 fi
 

@@ -35,11 +35,4 @@ elif [[ ${ALN} == "bwamem" ]]; then
 fi
 samtools merge -f ${prefix}.${run_id}.sorted.bam ${prefix}.hapA.${run_id}.sorted.bam ${prefix}.hapB.${run_id}.sorted.bam
 
-echo "[Biastools] Intersect the bam file and vcf file"
-if [ ! -f ${prefix}.het.vcf.gz ]; then
-    python3 ${path_module}filter_het_VCF.py -v ${prefix}.normalized.vcf.gz  -o ${prefix}.het.vcf.gz
-    tabix -p vcf ${prefix}.het.vcf.gz
-fi
-bedtools intersect -a ${prefix}.${run_id}.sorted.bam -b ${prefix}.het.vcf.gz | samtools view -bo ${prefix}.${run_id}.sorted.het.bam
-samtools index ${prefix}.${run_id}.sorted.het.bam
 
