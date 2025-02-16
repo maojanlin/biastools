@@ -1,50 +1,14 @@
+
 import argparse
+import multiprocessing
 import pickle
 import pysam
 import numpy as np
 from scipy.stats import chisquare
-from typing import List, Tuple, Dict, Union, Set
+from typing import List, Tuple, Dict, Union
 from collections import defaultdict
 import logging
-import concurrent.futures
-import multiprocessing
 
-from contextlib import contextmanager
-import threading
-import time
-import traceback
-import sys
-
-import pstats
-from line_profiler import profile
-
-
-
-def dump_thread_stacks():
-    """
-    Dumps the stack traces of all threads.
-    """
-    for thread_id, stack in sys._current_frames().items():
-        print(f"\nThread ID: {thread_id}")
-        for filename, lineno, name, line in traceback.extract_stack(stack):
-            print(f"File: {filename}, Line: {lineno}, Function: {name}")
-            if line:
-                print(f"  {line.strip()}")
-
-@contextmanager
-def track_lock(lock, name=''):
-    start = time.time()
-    logger.info(f"{name}: Attempting to acquire...")
-    lock.acquire()
-    try:
-        logger.info(f"{name}: Acquired after {time.time() - start:.4f} seconds")
-        #dump_thread_stacks()
-        yield
-    finally:
-        lock.release()
-        logger.info(f"{name}: Released")
-
-lock = threading.Lock()
 
 # Constants
 PADDING = 5
@@ -54,326 +18,13 @@ EXTEND_LIMIT = 70
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def process_chromosome(chromosome: str, sam_file: str, dict_haps: Dict, dict_cohorts: Dict, 
-                       dict_set_conflict_vars: Set, dict_var_pos: Dict, real_data: bool, run_id: str = None) -> Dict:
-    logger.info(f"Processing chromosome: {chromosome}")
-    f_sam = pysam.AlignmentFile(sam_file + f".{chromosome}.bam", "rb")
-    dict_bias = defaultdict(lambda: {'n_read': [0, 0, 0], 'n_var': [0, 0, 0, 0], 'map_q': [0, 0, 0], 'distribute': [[], [], [], []]})
-    
-    for segment in f_sam.fetch(chromosome):
-        if segment.is_unmapped:
-            continue
-        process_read(segment, chromosome, dict_haps, dict_cohorts, dict_set_conflict_vars, dict_var_pos, dict_bias, real_data, run_id)
-    
-    return dict_bias
-
-def process_read(self, segment: pysam.AlignedSegment):
-    """
-        ref_name = segment.reference_name
-        pos_start = segment.reference_start
-        pos_end = segment.reference_end
-        cigar_tuples = segment.cigartuples
-        mapq = segment.mapping_quality
-        read_seq = segment.query_alignment_sequence
-
-        related_vars = list(self.f_vcf.fetch(ref_name, pos_start, pos_end))
-        
-        for var in related_vars:
-            if var.start in self.dict_set_conflict_vars[ref_name]:
-                continue
-
-            match_flag_0 = self.match_to_hap(segment.query_name, pos_start, pos_end, var.start, 
-                                             read_seq, self.dict_ref_haps[ref_name][var.start][2], 
-                                             cigar_tuples, PADDING, PADDING+1, PADDING+1, True)
-            match_flag_1 = self.match_to_hap(segment.query_name, pos_start, pos_end, var.start, 
-                                             read_seq, self.dict_ref_haps[ref_name][var.start][3], 
-                                             cigar_tuples, PADDING, PADDING+1, PADDING+1, True)
-
-            self.update_bias_data(ref_name, var.start, match_flag_0, match_flag_1, pos_start, pos_end, mapq, segment)"""
-    ref_name     = segment.reference_name
-    seq_name     = segment.query_name
-    flag_read_n  = segment.is_read2
-    pos_start    = segment.reference_start # start position in genome coordiante, need +1 for vcf coordinate
-    pos_end      = segment.reference_end
-    cigar_tuples = segment.cigartuples
-    mapq         = segment.mapping_quality
-    read_seq     = segment.query_alignment_sequence # aligned sequence without SoftClip part
-    if cigar_tuples == None:
-        logger.warning(f"WARNING! {seq_name} is an aligned read without CIGAR!")
-        return
-        
-    if self.real_data == False:
-        rg_tag = segment.get_tag("RG")
-        if '_' in rg_tag:
-            chr_tag, hap_tag = rg_tag.split('_')
-        else:
-            chr_tag = None
-            hap_tag = rg_tag
-
-    # find the related variants without f_vcf.fetch
-    direct_var_start, related_var_start = self.find_related_vars(ref_name, pos_start, pos_end)
-    #fetching the sequence in the read_seq regarding to the variant
-    for base_var_start in related_var_start:
-        if base_var_start in self.dict_set_conflict_vars: # neglecting the conflict variant sites
-            continue
-
-        # 1 for match, 0 for unmatch, -1 for not cover
-        match_flag_0 = 0
-        match_flag_1 = 0
-            
-        # 1. Cohort alignment
-        if self.dict_cohorts.get(base_var_start): # Anchor Left
-            cohort_start, cohort_stop, cohort_seq0, cohort_seq1, lpad_0, lpad_1, rpad_0, rpad_1 = self.dict_cohorts[base_var_start] 
-            match_flag_0 = self.match_to_hap(seq_name, pos_start, pos_end, cohort_start, read_seq, cohort_seq0, cigar_tuples, PADDING, lpad_0+1, rpad_0+1, True)
-            if match_flag_0 != 1: # Left doesn't work, anchor Right
-                match_flag_0 = max(match_flag_0, self.match_to_hap(seq_name, pos_start, pos_end, cohort_stop, read_seq, cohort_seq0, cigar_tuples, PADDING, lpad_0+1, rpad_0+1, False))
-            match_flag_1 = self.match_to_hap(seq_name, pos_start, pos_end, cohort_start, read_seq, cohort_seq1, cigar_tuples, PADDING, lpad_1+1, rpad_1+1, True)
-            if match_flag_1 != 1: # Left doesn't work, anchor Right
-                match_flag_1 = max(match_flag_1, self.match_to_hap(seq_name, pos_start, pos_end, cohort_stop, read_seq, cohort_seq1, cigar_tuples, PADDING, lpad_1+1, rpad_1+1, False))
-            
-        # 2. Local alignment
-        if match_flag_0 == match_flag_1: # both or others
-            var_start, var_stop, seq_hap0, seq_hap1 = self.dict_haps[base_var_start]
-            match_flag_0 = self.match_to_hap(seq_name, pos_start, pos_end, var_start, read_seq, seq_hap0, cigar_tuples, PADDING, PADDING+1, PADDING+1, True)
-            if match_flag_0 != 1:
-                match_flag_0 = max(match_flag_0, self.match_to_hap(seq_name, pos_start, pos_end, var_stop, read_seq, seq_hap0, cigar_tuples, PADDING, PADDING+1, PADDING+1, False))
-            match_flag_1 = self.match_to_hap(seq_name, pos_start, pos_end, var_start, read_seq, seq_hap1, cigar_tuples, PADDING, PADDING+1, PADDING+1, True)
-            if match_flag_1 != 1:
-                match_flag_1 = max(match_flag_1, self.match_to_hap(seq_name, pos_start, pos_end, var_stop, read_seq, seq_hap1, cigar_tuples, PADDING, PADDING+1, PADDING+1, False))
-            
-        # 3. Assign Values
-        if base_var_start not in direct_var_start:
-            if not ((match_flag_0 == 1 and match_flag_1 != 1) or (match_flag_1 == 1 and  match_flag_0 !=1)):
-                continue
-        if match_flag_0 == -1 and match_flag_1 == -1:
-            continue
-        if match_flag_0 == 1 and match_flag_1 == 1:
-            self.dict_bias[base_var_start]['n_var'][2] += 1
-        elif match_flag_0 == 1:
-            self.dict_bias[base_var_start]['n_var'][0] += 1
-            # record the starting position of each read cover the variant
-            self.dict_bias[base_var_start]['distribute'][0].append(pos_start)
-            self.dict_bias[base_var_start]['distribute'][2].append(pos_end)
-        elif match_flag_1 == 1:
-            self.dict_bias[base_var_start]['n_var'][1] += 1
-            # record the starting position of each read cover the variant
-            self.dict_bias[base_var_start]['distribute'][1].append(pos_start)
-            self.dict_bias[base_var_start]['distribute'][3].append(pos_end)
-        else:
-            self.dict_bias[base_var_start]['n_var'][3] += 1
-            
-        # standard updating of read number and mapping quality
-        if self.real_data == True: # no golden information
-            self.dict_bias[base_var_start]['n_read'][0] += 1
-            self.dict_bias[base_var_start]['map_q'][0]  += mapq
-        else:
-            if self.run_id != None and self.run_id != chr_tag: # not the same chromosome
-                self.dict_bias[base_var_start]['n_read'][2] += 1
-                self.dict_bias[base_var_start]['map_q'][2] += 1
-            elif self.dict_ref_var_name[ref_name].get(base_var_start) == None:
-                continue
-            elif 'hapA' == hap_tag: # hapA
-                if len(self.dict_ref_var_name[ref_name][base_var_start]) == 6 and \
-                   (seq_name, flag_read_n) in self.dict_ref_var_name[ref_name][base_var_start][4]: # read is covering the variant but not stretch
-                    self.dict_bias[base_var_start]['map_q'][2] += mapq         
-                    if (match_flag_0 == 1 and match_flag_1 != 1) or (match_flag_0 != 1 and match_flag_1 == 1):
-                        #print("!!!!!!!\t\t", var_start, seq_name, flag_read_n, 'hapA', match_flag_0 == 1)
-                        pass
-                    continue
-                if (seq_name, flag_read_n) in self.dict_ref_var_name[ref_name][base_var_start][0]: # check if the read name is in the golden set
-                    self.dict_bias[base_var_start]['n_read'][0] += 1
-                    self.dict_bias[base_var_start]['map_q'][0]  += mapq
-                else:
-                    self.dict_bias[base_var_start]['n_read'][2] += 1
-                    self.dict_bias[base_var_start]['map_q'][2] += 1
-            elif 'hapB' == hap_tag: # hapB
-                if len(self.dict_ref_var_name[ref_name][base_var_start]) == 6 and \
-                   (seq_name, flag_read_n) in self.dict_ref_var_name[ref_name][base_var_start][5]: # read is covering the variant but not stretch
-                    self.dict_bias[base_var_start]['map_q'][2] += mapq         
-                    if (match_flag_0 == 1 and match_flag_1 != 1) or (match_flag_0 != 1 and match_flag_1 == 1):
-                        pass
-                    continue
-                if (seq_name, flag_read_n) in self.dict_ref_var_name[ref_name][var.start][1]: # check if the read name is in the golden set
-                    self.dict_bias[base_var_start]['n_read'][1] += 1
-                    self.dict_bias[base_var_start]['map_q'][1]  += mapq
-                else:
-                    self.dict_bias[base_var_start]['n_read'][2] += 1
-                    self.dict_bias[base_var_start]['map_q'][2] += 1
-            else:
-                logger.warning("WARNING, there is a read without haplotype information!!")
-
-def find_related_vars(ref_name: str, pos_start: int, pos_end: int, dict_var_pos: Dict) -> Tuple[List[int], List[int]]:
-    direct_var_start = binary_search_variants(dict_var_pos[ref_name], pos_start, pos_end)
-    related_var_start = direct_var_start
-    if len(direct_var_start) > 0:
-        new_start = pos_start
-        new_end = pos_end
-        if dict_var_pos[ref_name][0][direct_var_start[0]] < pos_start:
-            new_start = dict_var_pos[ref_name][0][direct_var_start[0]]
-        if dict_var_pos[ref_name][1][direct_var_start[-1]] > pos_end:
-            new_end = dict_var_pos[ref_name][1][direct_var_start[-1]]
-        if new_start < pos_start or new_end > pos_end:
-            related_var_start = binary_search_variants(dict_var_pos[ref_name], new_start, new_end)
-    return direct_var_start, related_var_start
-
-def binary_search_variants(var_pos: List[List[int]], pos_start: int, pos_end: int) -> List[int]:
-    list_start, list_end = var_pos
-    idx_start = bisect_left(list_end, pos_start)
-    idx_end = bisect_right(list_start, pos_end)
-    return list_start[idx_start:idx_end]
-
-def bisect_left(list_end: List[int], pos_start: int) -> int:
-    left, right = 0, len(list_end)
-    while left < right:
-        mid = (left + right) // 2
-        if list_end[mid] < pos_start:
-            left = mid + 1
-        else:
-            right = mid
-    return left
-
-def bisect_right(list_start: List[int], pos_end: int) -> int:
-    left, right = 0, len(list_start)
-    while left < right:
-        mid = (left + right) // 2
-        if list_start[mid] > pos_end:
-            right = mid
-        else:
-            left = mid + 1
-    return left
-
-def process_variant(base_var_start: int, segment: pysam.AlignedSegment, dict_haps: Dict, dict_cohorts: Dict, 
-                    pos_start: int, pos_end: int, read_seq: str, cigar_tuples: List[Tuple[int, int]]) -> Tuple[int, int]:
-    match_flag_0 = 0
-    match_flag_1 = 0
-
-    if base_var_start in dict_cohorts:
-        cohort_start, cohort_stop, cohort_seq0, cohort_seq1, lpad_0, lpad_1, rpad_0, rpad_1 = dict_cohorts[base_var_start]
-        match_flag_0 = match_to_hap(segment.query_name, pos_start, pos_end, cohort_start, read_seq, cohort_seq0, cigar_tuples, PADDING, lpad_0+1, rpad_0+1, True)
-        if match_flag_0 != 1:
-            match_flag_0 = max(match_flag_0, match_to_hap(segment.query_name, pos_start, pos_end, cohort_stop, read_seq, cohort_seq0, cigar_tuples, PADDING, lpad_0+1, rpad_0+1, False))
-        match_flag_1 = match_to_hap(segment.query_name, pos_start, pos_end, cohort_start, read_seq, cohort_seq1, cigar_tuples, PADDING, lpad_1+1, rpad_1+1, True)
-        if match_flag_1 != 1:
-            match_flag_1 = max(match_flag_1, match_to_hap(segment.query_name, pos_start, pos_end, cohort_stop, read_seq, cohort_seq1, cigar_tuples, PADDING, lpad_1+1, rpad_1+1, False))
-
-    if match_flag_0 == match_flag_1:
-        var_start, var_stop, seq_hap0, seq_hap1 = dict_haps[base_var_start]
-        match_flag_0 = match_to_hap(segment.query_name, pos_start, pos_end, var_start, read_seq, seq_hap0, cigar_tuples, PADDING, PADDING+1, PADDING+1, True)
-        if match_flag_0 != 1:
-            match_flag_0 = max(match_flag_0, match_to_hap(segment.query_name, pos_start, pos_end, var_stop, read_seq, seq_hap0, cigar_tuples, PADDING, PADDING+1, PADDING+1, False))
-        match_flag_1 = match_to_hap(segment.query_name, pos_start, pos_end, var_start, read_seq, seq_hap1, cigar_tuples, PADDING, PADDING+1, PADDING+1, True)
-        if match_flag_1 != 1:
-            match_flag_1 = max(match_flag_1, match_to_hap(segment.query_name, pos_start, pos_end, var_stop, read_seq, seq_hap1, cigar_tuples, PADDING, PADDING+1, PADDING+1, False))
-
-    return match_flag_0, match_flag_1
-
-def match_to_hap(seq_name: str, read_start: int, read_end: int, var_start: int,
-                 seq_read: str, seq_hap: str, cigar_tuples: List[Tuple[int, int]],
-                 padding: int, l_min_req: int, r_min_req: int, start_flag: bool = True) -> int:
-    if read_start > var_start or read_end < var_start:
-        return -1
-    r_start = locate_by_cigar(read_start, var_start, cigar_tuples)
-    
-    if start_flag:
-        l_bound = r_start - padding
-        r_bound = l_bound + len(seq_hap)
-    else:
-        r_bound = r_start + padding
-        l_bound = r_bound - len(seq_hap)
-
-    min_match = 0
-    if l_bound < 0:
-        seq_hap = seq_hap[-l_bound:]
-        l_bound = 0
-        min_match = r_min_req
-    if r_bound > len(seq_read):
-        seq_hap = seq_hap[:len(seq_read)-r_bound]
-        r_bound = len(seq_read)
-        if min_match != 0:
-            logger.warning(f"The read is totally contained in the variant!! {seq_name} at {var_start}")
-        min_match = l_min_req
-    if r_bound - l_bound < min_match:
-        return -1
-    if seq_read[l_bound:r_bound].upper() == seq_hap.upper():
-        return 1
-    else:
-        return 0
-
-def locate_by_cigar(read_start: int, target_pos: int, cigar_tuples: List[Tuple[int, int]]) -> int:
-    ref_cursor = read_start
-    read_cursor = 0
-    for code, runs in cigar_tuples:
-        if code in (0, 7, 8):  # M or = or X
-            ref_cursor += runs
-            if ref_cursor > target_pos:
-                return read_cursor + (runs - ref_cursor + target_pos)
-            read_cursor += runs
-        elif code == 1:  # I
-            if ref_cursor > target_pos:
-                return read_cursor
-            read_cursor += runs
-        elif code == 2:  # D
-            ref_cursor += runs
-            if ref_cursor > target_pos:
-                return read_cursor
-        elif code in (4, 5):  # S or H, pysam already parsed
-            pass
-        else:
-            logger.error(f"Unexpected CIGAR code {code}")
-    return read_cursor
-
-def update_bias_data(dict_bias: Dict, base_var_start: int, match_flag_0: int, match_flag_1: int, 
-                     pos_start: int, pos_end: int, mapq: int, real_data: bool, run_id: str, 
-                     chr_tag: str, hap_tag: str, seq_name: str, flag_read_n: bool):
-    bias_data = dict_bias[base_var_start]
-    
-    if match_flag_0 == 1 and match_flag_1 == 1:
-        bias_data['n_var'][2] += 1
-    elif match_flag_0 == 1:
-        bias_data['n_var'][0] += 1
-        bias_data['distribute'][0].append(pos_start)
-        bias_data['distribute'][2].append(pos_end)
-    elif match_flag_1 == 1:
-        bias_data['n_var'][1] += 1
-        bias_data['distribute'][1].append(pos_start)
-        bias_data['distribute'][3].append(pos_end)
-    else:
-        bias_data['n_var'][3] += 1
-
-    if real_data:
-        bias_data['n_read'][0] += 1
-        bias_data['map_q'][0] += mapq
-    else:
-        update_simulated_data(bias_data, run_id, chr_tag, hap_tag, seq_name, flag_read_n, mapq)
-
-def update_simulated_data(bias_data: Dict, run_id: str, chr_tag: str, hap_tag: str, 
-                          seq_name: str, flag_read_n: bool, mapq: int):
-    if run_id is not None and run_id != chr_tag:
-        bias_data['n_read'][2] += 1
-        bias_data['map_q'][2] += mapq
-    elif hap_tag == 'hapA':
-        update_hap_data(bias_data, seq_name, flag_read_n, mapq, 0)
-    elif hap_tag == 'hapB':
-        update_hap_data(bias_data, seq_name, flag_read_n, mapq, 1)
-    else:
-        logger.warning("There is a read without haplotype information!!")
-
-def update_hap_data(bias_data: Dict, seq_name: str, flag_read_n: bool, mapq: int, hap_index: int):
-    bias_data['n_read'][hap_index] += 1
-    bias_data['map_q'][hap_index] += mapq
-
-
-
-
-
-
 class VariantAnalyzer:
     def __init__(self, vcf_file: str, sam_file: str, fasta_file: str, 
                  golden_pickle: str = None, run_id: str = None, 
-                 real_data: bool = False, output_file: str = "output.rpt"):
+                 real_data: bool = False, output_file: str = "output.rpt", chromosome: str=None):
+        self.chromosome = chromosome
         self.f_vcf = pysam.VariantFile(vcf_file)
         self.f_sam = pysam.AlignmentFile(sam_file)
-        self.f_name = sam_file
         self.f_fasta = pysam.FastaFile(fasta_file)
         self.golden_pickle = golden_pickle
         self.run_id = run_id
@@ -384,60 +35,16 @@ class VariantAnalyzer:
         self.dict_set_conflict_vars = defaultdict(set)
         self.dict_ref_bias = defaultdict(lambda: defaultdict(lambda: {'n_read':[0,0,0], 'n_var':[0,0,0,0], 'map_q':[0,0,0], 'distribute':[[],[],[],[]]}))
         self.dict_ref_var_pos = defaultdict(lambda: [[],[]])
+        print(f"start initializing {self.chromosome}")
         
         if not self.real_data and self.golden_pickle:
             with open(self.golden_pickle, "rb") as f:
                 self.dict_ref_var_name = pickle.load(f)
 
-    """
-    def analyze(self):
-        self.build_variant_maps()
-        self.lock = threading.Lock()
-
-        # TODO try multiprocessing instead of threading
-        list_list_reads = []
-        for chrom in self.dict_ref_haps.keys():
-            tmp_f_sam = pysam.AlignmentFile(self.f_name + f".{chrom}" + ".bam", "r")
-            list_list_reads.append(tmp_f_sam.fetch(chrom))
-
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            #futures = {executor.submit(self.compare_reads_to_variants, chrom) for chrom in self.f_vcf.header.contigs}
-            futures = {executor.submit(self.process_chromosome, chrom, list_list_reads[idx], self.dict_ref_haps[chrom].copy(), self.dict_ref_cohorts[chrom].copy(), \
-                                       self.dict_set_conflict_vars[chrom].copy(), self.dict_ref_var_pos[chrom].copy(), self.real_data, self.run_id) \
-                       for idx, chrom in enumerate(self.dict_ref_haps.keys())}
-            for future in concurrent.futures.as_completed(futures):
-                #self.compare_reads_to_variants()
-                print(future, "executed!")
-                print(future.result())
-        self.generate_report()
-
-    def process_chromosome(self, chromosome, list_reads, dict_ref_haps, dict_ref_cohorts, dict_set_conflict_vars, dict_ref_var_pos, real_data, run_id):
-        #with track_lock(self.lock, name=f"Chromosome {chromosome} Lock"):
-        processor = ChromosomeProcessor(chromosome, list_reads, dict_ref_haps, dict_ref_cohorts, dict_set_conflict_vars, dict_ref_var_pos, real_data, run_id)
-        processor.compare_reads_to_variants(chromosome)
-        self.dict_ref_bias[chromosome] = processor.dict_bias.copy()
-        #logger.info(f"Finished processing for chromosome: {chromosome}")"""
-
     def analyze(self):
         self.build_variant_maps()
         self.compare_reads_to_variants()
-        self.generate_report()    
-
-    def compare_reads_to_variants(self):
-        logger.info("Start comparing reads to the variant map...")
-        with multiprocessing.get_context("spawn").Pool() as pool:
-            results = []
-            for chromosome in self.dict_ref_haps.keys():
-                results.append(pool.apply_async(VariantAnalyzer.process_chromosome, (
-                    chromosome, self.f_name, self.dict_ref_haps[chromosome], 
-                    self.dict_ref_cohorts[chromosome], self.dict_set_conflict_vars[chromosome], 
-                    self.dict_ref_var_pos[chromosome], self.real_data, self.run_id
-                )))
-            #pool.close()
-            #pool.join()
-            for result in results:
-                chromosome_bias = result.get()
-                self.dict_ref_bias.update(chromosome_bias)
+        return self.generate_report()
 
     def build_variant_maps(self):
         logger.info("Start building the variant maps...")
@@ -449,15 +56,16 @@ class VariantAnalyzer:
                 self.dict_set_conflict_vars[ref_name].update(range(pos - VAR_CHAIN, pos + VAR_CHAIN))
 
     def variant_seq(self):
-        for ref_name in self.f_fasta.references:
-            list_var = list(self.f_vcf.fetch(ref_name))
-            self.dict_ref_var_pos[ref_name] = [[var.start for var in list_var],[var.stop for var in list_var]]
-            len_list_var = len(list_var)
-            idx_var = 0
-            while idx_var < len_list_var:
-                idx_var = self.process_variant(ref_name, list_var, idx_var)
+        #for ref_name in self.f_fasta.references:
 
-    def process_variant(self, ref_name: str, list_var: List[pysam.VariantRecord], idx_vcf: int):
+        list_var = list(self.f_vcf.fetch(self.chromosome))
+        self.dict_ref_var_pos[self.chromosome] = [[var.start for var in list_var],[var.stop for var in list_var]]
+        len_list_var = len(list_var)
+        idx_var = 0
+        while idx_var < len_list_var:
+            idx_var = self.process_variant(list_var, idx_var)
+
+    def process_variant(self, list_var: List[pysam.VariantRecord], idx_vcf: int):
         var = list_var[idx_vcf] # iterate of the variants
         ref_name = var.contig
         
@@ -627,8 +235,6 @@ class VariantAnalyzer:
                     rpad_1 = len(seq_1) - lpad_1 - list_len_hap[1][idy]
                     self.dict_ref_cohorts[ref_name][(c_var.start)] = (var.start, max_cohort_stop, seq_0, seq_1, lpad_0, lpad_1, rpad_0, rpad_1) # c_var should be the last in cohort
             return idx_vcf + len(cohort_vars)
-        
-        
 
 
     def handle_repetitive_sequences(self, ref_name: str, var: pysam.VariantRecord, seq_hap0: str, seq_hap1: str, var_start: int, var_stop: int) -> Tuple[str, str, int, int]:
@@ -673,32 +279,286 @@ class VariantAnalyzer:
                     return len_extend # right extension successful
         return False 
 
+    def compare_reads_to_variants(self):
+        logger.info("Start comparing reads to the variant map...")
+        for segment in self.f_sam.fetch(self.chromosome):
+            if segment.is_unmapped:
+                continue
+            self.process_read(segment)
+
+    def process_read(self, segment: pysam.AlignedSegment):
+        ref_name     = segment.reference_name
+        seq_name     = segment.query_name
+        flag_read_n  = segment.is_read2
+        pos_start    = segment.reference_start # start position in genome coordiante, need +1 for vcf coordinate
+        pos_end      = segment.reference_end
+        cigar_tuples = segment.cigartuples
+        mapq         = segment.mapping_quality
+        read_seq     = segment.query_alignment_sequence # aligned sequence without SoftClip part
+        if cigar_tuples == None:
+            logger.warning(f"WARNING! {seq_name} is an aligned read without CIGAR!")
+            return
+        
+        if self.real_data == False:
+            rg_tag = segment.get_tag("RG")
+            if '_' in rg_tag:
+                chr_tag, hap_tag = rg_tag.split('_')
+            else:
+                chr_tag = None
+                hap_tag = rg_tag
+
+        # find the related variants without f_vcf.fetch
+        direct_var_start, related_var_start = self.find_related_vars(ref_name, pos_start, pos_end)
+        #fetching the sequence in the read_seq regarding to the variant
+        for base_var_start in related_var_start:
+            if base_var_start in self.dict_set_conflict_vars[ref_name]: # neglecting the conflict variant sites
+                continue
+
+            # 1 for match, 0 for unmatch, -1 for not cover
+            match_flag_0 = 0
+            match_flag_1 = 0
+            
+            # 1. Cohort alignment
+            if self.dict_ref_cohorts[ref_name].get(base_var_start): # Anchor Left
+                cohort_start, cohort_stop, cohort_seq0, cohort_seq1, lpad_0, lpad_1, rpad_0, rpad_1 = self.dict_ref_cohorts[ref_name][base_var_start] 
+                match_flag_0 = self.match_to_hap(seq_name, ref_name, pos_start, pos_end, cohort_start, read_seq, cohort_seq0, cigar_tuples, PADDING, lpad_0+1, rpad_0+1, True)
+                if match_flag_0 != 1: # Left doesn't work, anchor Right
+                    match_flag_0 = max(match_flag_0, self.match_to_hap(seq_name, ref_name, pos_start, pos_end, cohort_stop, read_seq, cohort_seq0, cigar_tuples, PADDING, lpad_0+1, rpad_0+1, False))
+                match_flag_1 = self.match_to_hap(seq_name, ref_name, pos_start, pos_end, cohort_start, read_seq, cohort_seq1, cigar_tuples, PADDING, lpad_1+1, rpad_1+1, True)
+                if match_flag_1 != 1: # Left doesn't work, anchor Right
+                    match_flag_1 = max(match_flag_1, self.match_to_hap(seq_name, ref_name, pos_start, pos_end, cohort_stop, read_seq, cohort_seq1, cigar_tuples, PADDING, lpad_1+1, rpad_1+1, False))
+            
+            # 2. Local alignment
+            if match_flag_0 == match_flag_1: # both or others
+                var_start, var_stop, seq_hap0, seq_hap1 = self.dict_ref_haps[ref_name][base_var_start]
+                match_flag_0 = self.match_to_hap(seq_name, ref_name, pos_start, pos_end, var_start, read_seq, seq_hap0, cigar_tuples, PADDING, PADDING+1, PADDING+1, True)
+                if match_flag_0 != 1:
+                    match_flag_0 = max(match_flag_0, self.match_to_hap(seq_name, ref_name, pos_start, pos_end, var_stop, read_seq, seq_hap0, cigar_tuples, PADDING, PADDING+1, PADDING+1, False))
+                match_flag_1 = self.match_to_hap(seq_name, ref_name, pos_start, pos_end, var_start, read_seq, seq_hap1, cigar_tuples, PADDING, PADDING+1, PADDING+1, True)
+                if match_flag_1 != 1:
+                    match_flag_1 = max(match_flag_1, self.match_to_hap(seq_name, ref_name, pos_start, pos_end, var_stop, read_seq, seq_hap1, cigar_tuples, PADDING, PADDING+1, PADDING+1, False))
+            
+            # 3. Assign Values
+            if base_var_start not in direct_var_start:
+                if not ((match_flag_0 == 1 and match_flag_1 != 1) or (match_flag_1 == 1 and  match_flag_0 !=1)):
+                    continue
+            if match_flag_0 == -1 and match_flag_1 == -1:
+                continue
+            if match_flag_0 == 1 and match_flag_1 == 1:
+                self.dict_ref_bias[ref_name][base_var_start]['n_var'][2] += 1
+            elif match_flag_0 == 1:
+                self.dict_ref_bias[ref_name][base_var_start]['n_var'][0] += 1
+                # record the starting position of each read cover the variant
+                self.dict_ref_bias[ref_name][base_var_start]['distribute'][0].append(pos_start)
+                self.dict_ref_bias[ref_name][base_var_start]['distribute'][2].append(pos_end)
+            elif match_flag_1 == 1:
+                self.dict_ref_bias[ref_name][base_var_start]['n_var'][1] += 1
+                # record the starting position of each read cover the variant
+                self.dict_ref_bias[ref_name][base_var_start]['distribute'][1].append(pos_start)
+                self.dict_ref_bias[ref_name][base_var_start]['distribute'][3].append(pos_end)
+            else:
+                self.dict_ref_bias[ref_name][base_var_start]['n_var'][3] += 1
+            
+            # standard updating of read number and mapping quality
+            if self.real_data == True: # no golden information
+                self.dict_ref_bias[ref_name][base_var_start]['n_read'][0] += 1
+                self.dict_ref_bias[ref_name][base_var_start]['map_q'][0]  += mapq
+            else:
+                if self.run_id != None and self.run_id != chr_tag: # not the same chromosome
+                    self.dict_ref_bias[ref_name][base_var_start]['n_read'][2] += 1
+                    self.dict_ref_bias[ref_name][base_var_start]['map_q'][2] += 1
+                elif self.dict_ref_var_name[ref_name].get(base_var_start) == None:
+                    continue
+                elif 'hapA' == hap_tag: # hapA
+                    if len(self.dict_ref_var_name[ref_name][base_var_start]) == 6 and \
+                       (seq_name, flag_read_n) in self.dict_ref_var_name[ref_name][base_var_start][4]: # read is covering the variant but not stretch
+                        self.dict_ref_bias[ref_name][base_var_start]['map_q'][2] += mapq         
+                        if (match_flag_0 == 1 and match_flag_1 != 1) or (match_flag_0 != 1 and match_flag_1 == 1):
+                            #print("!!!!!!!\t\t", var_start, seq_name, flag_read_n, 'hapA', match_flag_0 == 1)
+                            pass
+                        continue
+                    if (seq_name, flag_read_n) in self.dict_ref_var_name[ref_name][base_var_start][0]: # check if the read name is in the golden set
+                        self.dict_ref_bias[ref_name][base_var_start]['n_read'][0] += 1
+                        self.dict_ref_bias[ref_name][base_var_start]['map_q'][0]  += mapq
+                    else:
+                        self.dict_ref_bias[ref_name][base_var_start]['n_read'][2] += 1
+                        self.dict_ref_bias[ref_name][base_var_start]['map_q'][2] += 1
+                elif 'hapB' == hap_tag: # hapB
+                    if len(self.dict_ref_var_name[ref_name][base_var_start]) == 6 and \
+                       (seq_name, flag_read_n) in self.dict_ref_var_name[ref_name][base_var_start][5]: # read is covering the variant but not stretch
+                        self.dict_ref_bias[ref_name][base_var_start]['map_q'][2] += mapq         
+                        if (match_flag_0 == 1 and match_flag_1 != 1) or (match_flag_0 != 1 and match_flag_1 == 1):
+                            #print("!!!!!!!\t\t", var_start, seq_name, flag_read_n, 'hapB', match_flag_1 == 1)
+                            pass
+                        continue
+                    if (seq_name, flag_read_n) in self.dict_ref_var_name[ref_name][var.start][1]: # check if the read name is in the golden set
+                        self.dict_ref_bias[ref_name][base_var_start]['n_read'][1] += 1
+                        self.dict_ref_bias[ref_name][base_var_start]['map_q'][1]  += mapq
+                    else:
+                        self.dict_ref_bias[ref_name][base_var_start]['n_read'][2] += 1
+                        self.dict_ref_bias[ref_name][base_var_start]['map_q'][2] += 1
+                else:
+                    logger.warning("WARNING, there is a read without haplotype information!!")
+
+    def find_related_vars(self, ref_name: str, pos_start: int, pos_end: int) -> Tuple[List[int], List[int]]:
+        direct_var_start = self.binary_search_variants(ref_name, pos_start, pos_end)
+        related_var_start = direct_var_start
+        if len(direct_var_start) > 0:
+            new_start = pos_start
+            new_end   = pos_end
+            if self.dict_ref_cohorts[ref_name].get(direct_var_start[0]):
+                new_start = self.dict_ref_cohorts[ref_name][direct_var_start[0]][0]  # cohort start
+            if self.dict_ref_cohorts[ref_name].get(direct_var_start[-1]):
+                new_end   = self.dict_ref_cohorts[ref_name][direct_var_start[-1]][1] # cohort end
+            if new_start < pos_start or new_end > pos_end:
+                related_var_start = self.binary_search_variants(ref_name, new_start, new_end)
+        return direct_var_start, related_var_start
+    
+    def binary_search_variants(self, ref_name: str, pos_start: int, pos_end: int) -> List[int]:
+        list_start, list_end = self.dict_ref_var_pos[ref_name]
+        # binary search the range that pos_start > list_end[idx_2] and pos_end < list_start[idx_1], return list_start[idx_1:idx_2]
+        idx_start = self.bisect_left(list_end, pos_start)
+        idx_end   = self.bisect_right(list_start, pos_end)
+        return list_start[idx_start:idx_end]
+    
+    def bisect_left(self, list_end: List[int], pos_start: int) -> int:
+        left, right = 0, len(list_end)
+        while left < right:
+            mid = (left + right) // 2
+            if list_end[mid] < pos_start:
+                left = mid + 1
+            else:
+                right = mid
+        return left
+
+    def bisect_right(self, list_start: List[int], pos_end: int) -> int:
+        left, right = 0, len(list_start)
+        while left < right:
+            mid = (left + right) // 2
+            if list_start[mid] > pos_end:
+                right = mid
+            else:
+                left = mid + 1
+        return left
+
+
+    def update_bias_data(self, ref_name: str, var_start: int, match_flag_0: int, match_flag_1: int, 
+                         pos_start: int, pos_end: int, mapq: int, segment: pysam.AlignedSegment):
+        bias_data = self.dict_ref_bias[ref_name][var_start]
+        
+        if match_flag_0 == 1 and match_flag_1 == 1:
+            bias_data['n_var'][2] += 1
+        elif match_flag_0 == 1:
+            bias_data['n_var'][0] += 1
+            bias_data['distribute'][0].append(pos_start)
+            bias_data['distribute'][2].append(pos_end)
+        elif match_flag_1 == 1:
+            bias_data['n_var'][1] += 1
+            bias_data['distribute'][1].append(pos_start)
+            bias_data['distribute'][3].append(pos_end)
+        else:
+            bias_data['n_var'][3] += 1
+
+        if self.real_data:
+            bias_data['n_read'][0] += 1
+            bias_data['map_q'][0] += mapq
+        else:
+            self.update_simulated_data(ref_name, var_start, segment, bias_data, mapq)
+
+    def update_simulated_data(self, ref_name: str, var_start: int, segment: pysam.AlignedSegment, 
+                              bias_data: Dict, mapq: int):
+        rg_tag = segment.get_tag("RG")
+        chr_tag, hap_tag = rg_tag.split('_') if '_' in rg_tag else (None, rg_tag)
+        
+        if self.run_id is not None and self.run_id != chr_tag:
+            bias_data['n_read'][2] += 1
+            bias_data['map_q'][2] += mapq
+        elif self.dict_ref_var_name[ref_name].get(var_start) is None:
+            return
+        elif hap_tag == 'hapA':
+            self.update_hap_data(ref_name, var_start, segment, bias_data, mapq, 0)
+        elif hap_tag == 'hapB':
+            self.update_hap_data(ref_name, var_start, segment, bias_data, mapq, 1)
+        else:
+            logger.warning("There is a read without haplotype information!!")
+
+    def update_hap_data(self, ref_name: str, var_start: int, segment: pysam.AlignedSegment, 
+                        bias_data: Dict, mapq: int, hap_index: int):
+        var_name_data = self.dict_ref_var_name[ref_name][var_start]
+        if len(var_name_data) == 6 and (segment.query_name, segment.is_read2) in var_name_data[4 + hap_index]:
+            bias_data['map_q'][2] += mapq
+        elif (segment.query_name, segment.is_read2) in var_name_data[hap_index]:
+            bias_data['n_read'][hap_index] += 1
+            bias_data['map_q'][hap_index] += mapq
+        else:
+            bias_data['n_read'][2] += 1
+            bias_data['map_q'][2] += mapq
 
     def generate_report(self):
-        logger.info("Start output report...")
-        self.output_report()
+        logger.info("Start generating report...")
+        return self.output_report()
 
     def output_report(self):
-        with open(self.output_file, 'w') as f_all, \
-             open(self.output_file + '.gap', 'w') as f_gap, \
-             open(self.output_file + '.SNP', 'w') as f_SNP:
-            
-            headers = self.get_report_headers()
-            f_all.write(headers['all'])
-            f_gap.write(headers['gap'])
-            f_SNP.write(headers['SNP'])
+        all_output = []
+        gap_output = []
+        snp_output = []
 
-            self.f_vcf.reset()
-            for var in self.f_vcf:
-                self.write_variant_data(var, f_all, f_gap, f_SNP)
+        self.f_vcf.reset()
+        for var in self.f_vcf.fetch(self.chromosome):
+            all_line, gap_line, snp_line = self.format_variant_data(var)
+            if all_line == None:
+                continue
+            all_output.append(all_line)
+            if gap_line:
+                gap_output.append(gap_line)
+            if snp_line:
+                snp_output.append(snp_line)
 
-    def get_report_headers(self) -> Dict[str, str]:
-        if self.real_data:
-            header = "CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tBOTH\tOTHER\tGAP\n"
-            return {'all': header, 'gap': header, 'SNP': header}
+        return {
+            'all': ''.join(all_output),
+            'gap': ''.join(gap_output),
+            'SNP': ''.join(snp_output)
+        }
+
+    def format_variant_data(self, var):
+        ref_name = var.contig
+        hap = var.samples[0]['GT']
+        if (hap[0] != 0 and hap[1] != 0) or (hap[0] == 0 and hap[1] == 0):
+            return None, None, None
+        if hap[0] == 0:
+            idx_ref, idx_alt = 0, 1
         else:
-            header = "CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tBOTH\tOTHER\tMAP_BALANCE\tMAP_REF\tMAP_ALT\tMIS_MAP\tSIM_BALANCE\tSIM_REF\tSIM_ALT\tGAP\n"
-            return {'all': header, 'gap': header, 'SNP': header}
+            idx_ref, idx_alt = 1, 0
+        
+        if var.start in self.dict_set_conflict_vars[ref_name]:
+            return None, None, None
+
+        bias_data = self.dict_ref_bias[ref_name][var.start]
+        n_read = bias_data['n_read']
+        n_var = bias_data['n_var']
+        map_q = bias_data['map_q']
+        p_value = self.chi_square_test(var.start, bias_data['distribute'][idx_alt])
+        p_value = min(p_value, self.chi_square_test(var.start, bias_data['distribute'][idx_ref]))
+
+        output_string = f"{ref_name}\t{var.start+1}\t{sum(n_read)}\t{self.get_division(sum(map_q[:2]), sum(n_read[:2]))}\t{p_value:.4f}\t"
+        output_string += f"{self.get_division(n_var[idx_ref]+n_var[2]*0.5, sum(n_var[:3]))}\t{n_var[idx_ref]}\t{n_var[idx_alt]}\t{n_var[2]}\t{n_var[3]}"
+
+        if not self.real_data:
+            output_string += f"\t{self.get_division(n_read[idx_ref], sum(n_read[:2]))}\t{n_read[idx_ref]}\t{n_read[idx_alt]}\t{n_read[2]}"
+            read_info = self.dict_ref_var_name[ref_name][var.start]
+            output_string += f"\t{self.get_division(read_info[idx_ref+2], sum(read_info[2:4]))}\t{read_info[idx_ref+2]}\t{read_info[idx_alt+2]}"
+
+        all_line = output_string + "\t"
+        gap_line = None
+        snp_line = None
+
+        if len(var.ref) == len(var.alts[hap[idx_alt] - 1]):
+            all_line += "\n"
+            snp_line = output_string + "\n"
+        else:
+            all_line += ".\n"
+            gap_line = output_string + "\n"
+        return all_line, gap_line, snp_line
 
     def write_variant_data(self, var: pysam.VariantRecord, f_all, f_gap, f_SNP):
         ref_name = var.contig
@@ -742,7 +602,10 @@ class VariantAnalyzer:
         bucket_len = int(100 / bucket_num)
         list_count = np.zeros(bucket_num)
         input_idx = np.minimum((var_start - np.array(list_pos_start)) // bucket_len, bucket_num - 1)
-        np.add.at(list_count, input_idx, 1)
+        try:
+            np.add.at(list_count, input_idx, 1)
+        except IndexError:
+            print(var_start, list_pos_start)
         _, p_value = chisquare(list_count)
         return 0 if np.isnan(p_value) else p_value
 
@@ -808,6 +671,97 @@ class VariantAnalyzer:
                     return seq_hap0_extend, seq_hap1_extend, idx+1
         return seq_hap0_extend, seq_hap1_extend, False
 
+    def match_to_hap(self, seq_name: str, contig: str, read_start: int, read_end: int, var_start: int,
+                     seq_read: str, seq_hap: str, cigar_tuples: List[Tuple[int, int]],
+                     padding: int, l_min_req: int, r_min_req: int, start_flag: bool = True) -> int:
+        if read_start > var_start or read_end < var_start:
+            return -1
+        r_start = self.locate_by_cigar(read_start, var_start, cigar_tuples)
+        
+        if start_flag:
+            l_bound = r_start - padding
+            r_bound = l_bound + len(seq_hap)
+        else:
+            r_bound = r_start + padding
+            l_bound = r_bound - len(seq_hap)
+
+        min_match = 0
+        if l_bound < 0:
+            seq_hap = seq_hap[-l_bound:]
+            l_bound = 0
+            min_match = r_min_req
+        if r_bound > len(seq_read):
+            seq_hap = seq_hap[:len(seq_read)-r_bound]
+            r_bound = len(seq_read)
+            if min_match != 0:
+                logger.warning(f"The read is totally contained in the variant!! {seq_name} at {contig}, {var_start}")
+            min_match = l_min_req
+        if r_bound - l_bound < min_match:
+            return -1
+        if seq_read[l_bound:r_bound].upper() == seq_hap.upper():
+            return 1
+        else:
+            return 0
+
+    def locate_by_cigar(self, read_start: int, target_pos: int, cigar_tuples: List[Tuple[int, int]]) -> int:
+        ref_cursor = read_start
+        read_cursor = 0
+        for code, runs in cigar_tuples:
+            if code in (0, 7, 8):  # M or = or X
+                ref_cursor += runs
+                if ref_cursor > target_pos:
+                    return read_cursor + (runs - ref_cursor + target_pos)
+                read_cursor += runs
+            elif code == 1:  # I
+                if ref_cursor > target_pos:
+                    return read_cursor
+                read_cursor += runs
+            elif code == 2:  # D
+                ref_cursor += runs
+                if ref_cursor > target_pos:
+                    return read_cursor
+            elif code in (4, 5):  # S or H, pysam already parsed
+                pass
+            else:
+                logger.error(f"Unexpected CIGAR code {code}")
+        return read_cursor
+
+
+def analyze_read(list_info):
+    path_vcf, path_bam, path_ref, golden_pickle, run_id, real_data, out, chromosome = list_info
+    analyzer = VariantAnalyzer(path_vcf, path_bam, path_ref, 
+                                   golden_pickle, run_id, 
+                                   real_data, out, chromosome)
+    return analyzer.analyze()
+
+def write_report(path_out, result, real_data: bool):
+    f_all = open(path_out + ".all", "w")
+    f_gap = open(path_out + ".gap", "w")
+    f_snp = open(path_out + ".snp", "w")
+
+    headers = get_report_headers(real_data)
+    f_all.write(headers['all'])
+    f_gap.write(headers['gap'])
+    f_snp.write(headers['SNP'])
+
+    for element in result:
+        f_all.write(element['all'])
+        f_gap.write(element['gap'])
+        f_snp.write(element['SNP'])
+    f_all.close()
+    f_gap.close()
+    f_snp.close()
+
+def get_report_headers(real_data: bool) -> Dict[str, str]:
+    if real_data:
+        header = "CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tBOTH\tOTHER\tGAP\n"
+        return {'all': header, 'gap': header, 'SNP': header}
+    else:
+        header = "CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tBOTH\tOTHER\tMAP_BALANCE\tMAP_REF\tMAP_ALT\tMIS_MAP\tSIM_BALANCE\tSIM_REF\tSIM_ALT\tGAP\n"
+        return {'all': header, 'gap': header, 'SNP': header}
+
+
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Analyze reference bias in genomic sequencing data.")
@@ -816,22 +770,35 @@ def parse_arguments():
     parser.add_argument('-f', '--fasta', help='Reference FASTA file', required=True)
     parser.add_argument('-r', '--real_data', help='Turn off hap_information warning for real data', action='store_true')
     parser.add_argument('-p', '--golden_pickle', help='Pickle file containing the golden information for report reference')
-    parser.add_argument('-t', '--run_id', help='Tag for run_id, can be used to indicate chromosome number')
+    parser.add_argument('-i', '--run_id', help='Tag for run_id, can be used to indicate chromosome number')
+    parser.add_argument('-t', '--thread', help='Number of threads', type=int, default=8)
     parser.add_argument('-o', '--out', help='Output file', required=True)
     return parser.parse_args()
 
+
+def main():
+    args = parse_arguments()
+    bam_file = args.sam
+    vcf_file = args.vcf
+    ref_file = args.fasta
+    pickle_file = args.golden_pickle
+    run_id = args.run_id
+    real_data = args.real_data
+    out = args.out
+    thread = args.thread
+
+    list_chromosome = []
+    for chromosome in pysam.VariantFile(vcf_file).header.contigs.keys():
+        if 'random' in chromosome or 'chrUn' in chromosome or 'alt' in chromosome or 'chrEBV' in chromosome or 'chrM' in chromosome:
+            continue
+        list_chromosome.append(chromosome)
+    
+    list_info = [(vcf_file, bam_file, ref_file, pickle_file, run_id, real_data, out, chromosome) for chromosome in list_chromosome]
+    with multiprocessing.Pool(thread) as pool:
+        result = pool.map(analyze_read, list_info)
+    write_report(out, result, real_data)
+
+
+
 if __name__ == "__main__":
-    try:
-        args = parse_arguments()
-        analyzer = VariantAnalyzer(args.vcf, args.sam, args.fasta, 
-                                   args.golden_pickle, args.run_id, 
-                                   args.real_data, args.out)
-        analyzer.analyze()
-
-        #p = pstats.Stats('profile_output.prof')
-        #p.sort_stats('cumulative').print_stats(20)
-        #p.print_callers('acquire')
-
-    except Exception as e:
-        logger.error(f"An error occurred: {e}")
-        raise
+    main()
