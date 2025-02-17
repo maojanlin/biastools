@@ -694,7 +694,8 @@ class VariantAnalyzer:
             seq_hap = seq_hap[:len(seq_read)-r_bound]
             r_bound = len(seq_read)
             if min_match != 0:
-                logger.warning(f"The read is totally contained in the variant!! {seq_name} at {contig}, {var_start}")
+                #logger.warning(f"The read is totally contained in the variant!! {seq_name} at {contig}, {var_start}")
+                pass
             min_match = l_min_req
         if r_bound - l_bound < min_match:
             return -1
