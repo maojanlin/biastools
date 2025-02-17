@@ -5,8 +5,88 @@ import os.path
 from os import path
 import pysam
 import numpy as np
-from ref_bi_context import output_report, get_division
 
+
+
+def get_division(num_1, num_2):
+    if num_2 == 0:
+        return 'nan'
+        #return format(num_1 / (num_2+0.000001), '.4f')
+    else:
+        return format(num_1 / num_2, '.4f')
+
+
+def output_report(
+        f_vcf                   :pysam.VariantFile,
+        dict_ref_bias           :dict,
+        dict_set_conflict_vars  :dict,
+        flag_real               :bool,
+        fn_golden               :str,
+        fn_output               :str
+        ) -> None:
+    """
+    Output the reference bias report to three different files:
+        - f_all: containing all the variants
+        - f_gap: contains only insertions and deletions
+        - f_SNP: contains only SNPs
+    """
+    if flag_real != True:
+        with open(fn_golden, "rb") as f:
+            dict_ref_var_name = pickle.load(f)
+
+    f_all = open(fn_output, 'w')
+    f_gap = open(fn_output + '.gap', 'w')
+    f_SNP = open(fn_output + '.SNP', 'w')
+    if flag_real:
+        f_all.write("CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tBOTH\tOTHER\tGAP\n")
+        f_gap.write("CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tBOTH\tOTHER\n")
+        f_SNP.write("CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tBOTH\tOTHER\n")
+    else:
+        f_all.write("CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tBOTH\tOTHER\tMAP_BALANCE\tMAP_REF\tMAP_ALT\tMIS_MAP\tSIM_BALANCE\tSIM_REF\tSIM_ALT\tGAP\n")
+        f_gap.write("CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tBOTH\tOTHER\tMAP_BALANCE\tMAP_REF\tMAP_ALT\tMIS_MAP\tSIM_BALANCE\tSIM_REF\tSIM_ALT\n")
+        f_SNP.write("CHR\tHET_SITE\tNUM_READS\tAVG_MAPQ\tEVEN_P_VALUE\tBALANCE\tREF\tALT\tBOTH\tOTHER\tMAP_BALANCE\tMAP_REF\tMAP_ALT\tMIS_MAP\tSIM_BALANCE\tSIM_REF\tSIM_ALT\n")
+    for var in f_vcf:
+        ref_name = var.contig
+        hap = var.samples[0]['GT']
+        # Filtering all the homozygous alleles or the alleles without reference
+        if (hap[0] != 0 and hap[1] != 0) or (hap[0] == 0 and hap[1] == 0):
+            continue
+        if hap[0] == 0:
+            idx_ref, idx_alt = 0, 1
+        else:
+            idx_ref, idx_alt = 1, 0
+        # Filtering the conflict vars
+        if var.start in dict_set_conflict_vars[ref_name]:
+            continue
+        n_read = dict_ref_bias[ref_name][var.start]['n_read']
+        n_var  = dict_ref_bias[ref_name][var.start]['n_var']
+        map_q  = dict_ref_bias[ref_name][var.start]['map_q']
+        #p_value = interval_variance(var.start, dict_ref_bias[ref_name][var.start]['distribute'])
+        p_value = chi_square_test(var.start, dict_ref_bias[ref_name][var.start]['distribute'][idx_alt])
+        p_value = min(p_value, chi_square_test(var.start, dict_ref_bias[ref_name][var.start]['distribute'][idx_ref]))
+
+        output_string = (ref_name + '\t' + str(var.start+1) + '\t')
+        output_string += (str(sum(n_read)) + "\t" + get_division(sum(map_q[:2]), sum(n_read[:2])) + "\t" + format(p_value, '.4f') + '\t')
+        # n_var[0,1,2,3] = hap0, hap1, both, others
+        output_string += get_division(n_var[idx_ref]+n_var[2]*0.5, sum(n_var[:3])) + "\t" + str(n_var[idx_ref]) + "\t" + str(n_var[idx_alt]) + "\t" + str(n_var[2]) + "\t" + str(n_var[3])
+        #output_string += get_division(n_var[idx_ref], sum(n_var[:2])) + "\t" + str(n_var[idx_ref]) + "\t" + str(n_var[idx_alt]) + "\t" + str(n_var[2]) + "\t" + str(n_var[3])
+        if flag_real != True: # Golden Information
+            # mapping balance information
+            output_string += "\t" + get_division(n_read[idx_ref], sum(n_read[:2])) + '\t' + str(n_read[idx_ref]) + '\t' + str(n_read[idx_alt]) + '\t' + str(n_read[2])  
+            read_info = dict_ref_var_name[ref_name][var.start]
+            # simulation balance information
+            output_string += '\t' + get_division(read_info[idx_ref+2], sum(read_info[2:4])) + '\t' + str(read_info[idx_ref+2]) + '\t' + str(read_info[idx_alt+2])  
+
+        if len(var.ref) ==  len(var.alts[ hap[idx_alt] - 1]): # length of ref is equal to length of 
+            f_all.write(output_string + '\t' + '\n')
+            f_SNP.write(output_string + '\n')
+        else:
+            f_all.write(output_string + '\t' + '.\n')
+            f_gap.write(output_string + '\n')
+    
+    f_all.close()
+    f_gap.close()
+    f_SNP.close()
 
 
 def hap_inside(
@@ -379,7 +459,8 @@ if __name__ == "__main__":
     parser.add_argument('-f', '--fasta', help='reference fasta file')
     parser.add_argument('-r', '--real_data', help='turn off hap_information warning for real data', action='store_true')
     parser.add_argument('-p', '--golden_pickle', help='the pickle file contain the golden information for report reference')
-    parser.add_argument('-t', '--run_id', help='the tag for run_id, can be used to indicate for example chromosome number')
+    parser.add_argument('-i', '--run_id', help='the tag for run_id, can be used to indicate for example chromosome number')
+    parser.add_argument('-t', '--thread', help='Number of threads, not supported', type=int, default=8)
     parser.add_argument('-o', '--out', help='output file')
     args = parser.parse_args()
     

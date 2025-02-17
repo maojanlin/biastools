@@ -37,7 +37,7 @@ def catch_assert(parser, message):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Simulation/Alignment/Analyzing/Prediction module of the Biastools.")
+    parser = argparse.ArgumentParser(description="Simulation/Alignment/Analyzing/Prediction module of the Biastools v0.1.1")
     parser.add_argument('-o', '--out', help="Path to output directory ['out_dir'].", default="out_dir")
     parser.add_argument('-g', '--genome', help="Path to the reference genome.")
     parser.add_argument('-v', '--vcf', help="Path to the personal vcf file.")
@@ -170,7 +170,7 @@ def main():
         if list_report != None:
             print("[Biastools] Plot the indel balance plot for multiple bias reports...")
             if flag_real:
-                subprocess.call(['python3', path_module+'indel_balance_plot.py', "-lr", ' '.join(list_report), "-ln", ' '.join(list_run_id), \
+                subprocess.call(['python3', path_module+'indel_balance_plot.py', "-lr"] + list_report + ["-ln"] + list_run_id + [  \
                                             "-vcf", path_output+"/"+sample_id+".het.vcf.gz", "-bd", str(boundary), "-map", \
                                             "-out", path_output+"/"+sample_id+"."+run_id+".real", "-real"])
             else:
