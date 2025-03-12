@@ -391,7 +391,7 @@ class VariantAnalyzer:
                             #print("!!!!!!!\t\t", var_start, seq_name, flag_read_n, 'hapB', match_flag_1 == 1)
                             pass
                         continue
-                    if (seq_name, flag_read_n) in self.dict_ref_var_name[ref_name][var.start][1]: # check if the read name is in the golden set
+                    if (seq_name, flag_read_n) in self.dict_ref_var_name[ref_name][base_var_start][1]: # check if the read name is in the golden set
                         self.dict_ref_bias[ref_name][base_var_start]['n_read'][1] += 1
                         self.dict_ref_bias[ref_name][base_var_start]['map_q'][1]  += mapq
                     else:

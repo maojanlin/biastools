@@ -58,10 +58,10 @@ else
                              -o ${r_prefix}.${run_id}.sim.bias
     
     # report the bias categories and report
-    python3 ${path_module}golden_graph_report.py -mb ${r_prefix}.${run_id}.sim.bias.SNP -out ${r_prefix}.${run_id}.SNP
+    python3 ${path_module}golden_graph_report.py -mb ${r_prefix}.${run_id}.sim.bias.snp -out ${r_prefix}.${run_id}.snp
     python3 ${path_module}golden_graph_report.py -mb ${r_prefix}.${run_id}.sim.bias.gap -out ${r_prefix}.${run_id}.gap
     # plot the measures with NMB and NAB                      
-    python3 ${path_module}golden_graph.py        -mb ${r_prefix}.${run_id}.sim.bias.SNP -out ${r_prefix}.${run_id}.SNP
+    python3 ${path_module}golden_graph.py        -mb ${r_prefix}.${run_id}.sim.bias.snp -out ${r_prefix}.${run_id}.snp
     python3 ${path_module}golden_graph.py        -mb ${r_prefix}.${run_id}.sim.bias.gap -out ${r_prefix}.${run_id}.gap
     # indel balance plot
     python3 ${path_module}indel_balance_plot.py  -lr ${r_prefix}.${run_id}.sim.bias.all \

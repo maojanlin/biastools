@@ -37,7 +37,7 @@ def catch_assert(parser, message):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Simulation/Alignment/Analyzing/Prediction module of the Biastools v0.2.0")
+    parser = argparse.ArgumentParser(description="Simulation/Alignment/Analyzing/Prediction module of the Biastools v0.2.1")
     parser.add_argument('--version', action='version', version='%(prog)s 0.2.0')
     parser.add_argument('-o', '--out', help="Path to output directory ['out_dir'].", default="out_dir")
     parser.add_argument('-g', '--genome', help="Path to the reference genome.")
