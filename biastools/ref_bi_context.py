@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 class VariantAnalyzer:
     def __init__(self, vcf_file: str, sam_file: str, fasta_file: str, 
                  golden_pickle: str = None, run_id: str = None, 
-                 real_data: bool = False, output_file: str = "output.rpt", chromosome: str=None):
+                 real_data: bool = False, output_file: str = "output.rpt", chromosome: str=None,
+                 max_len_diff: int = 20):
         self.chromosome = chromosome
         self.f_vcf = pysam.VariantFile(vcf_file)
         self.f_sam = pysam.AlignmentFile(sam_file)
@@ -35,6 +36,7 @@ class VariantAnalyzer:
         self.dict_set_conflict_vars = defaultdict(set)
         self.dict_ref_bias = defaultdict(lambda: defaultdict(lambda: {'n_read':[0,0,0], 'n_var':[0,0,0,0], 'map_q':[0,0,0], 'distribute':[[],[],[],[]]}))
         self.dict_ref_var_pos = defaultdict(lambda: [[],[]])
+        self.max_len_diff = max_len_diff
         print(f"start initializing {self.chromosome}")
         
         if not self.real_data and self.golden_pickle:
@@ -340,28 +342,6 @@ class VariantAnalyzer:
                                                    cohort_stop, read_seq, cohort_seq1,
                                                    cigar_tuples, PADDING, lpad_1+1, rpad_1+1, False))
 
-                """
-                # If both exact matches failed, try edit distance at both anchor points
-                if match_flag_0 != 1 and match_flag_1 != 1:
-                    edit_dist_0 = min(
-                        self.get_edit_distance(read_seq, cohort_seq0, pos_start, cohort_start,
-                                             cigar_tuples, PADDING, lpad_0+1, rpad_0+1, True),
-                        self.get_edit_distance(read_seq, cohort_seq0, pos_start, cohort_stop,
-                                             cigar_tuples, PADDING, lpad_0+1, rpad_0+1, False)
-                    )
-                    edit_dist_1 = min(
-                        self.get_edit_distance(read_seq, cohort_seq1, pos_start, cohort_start,
-                                             cigar_tuples, PADDING, lpad_1+1, rpad_1+1, True),
-                        self.get_edit_distance(read_seq, cohort_seq1, pos_start, cohort_stop,
-                                             cigar_tuples, PADDING, lpad_1+1, rpad_1+1, False)
-                    )
-                    
-                    # Assign based on minimum edit distance
-                    if edit_dist_0 < edit_dist_1 and edit_dist_0 <= len(cohort_seq0) * 0.2:
-                        match_flag_0 = 1
-                    elif edit_dist_1 < edit_dist_0 and edit_dist_1 <= len(cohort_seq1) * 0.2:
-                        match_flag_1 = 1"""
-
             # Try local alignment if cohort didn't give definitive result
             #if match_flag_0 != 1 and match_flag_1 != 1:
             if match_flag_0 == match_flag_1:
@@ -386,7 +366,7 @@ class VariantAnalyzer:
 
                 # If both exact matches failed, try edit distance at both anchor points
                 if (match_flag_0 != -1 and match_flag_1 != -1) and (match_flag_0 != 1 and match_flag_1 != 1) \
-                    and abs(len(seq_hap0) - len(seq_hap1)) <= 20:
+                    and abs(len(seq_hap0) - len(seq_hap1)) <= self.max_len_diff:
                     edit_dist_0 = min(
                         self.get_edit_distance(read_seq, seq_hap0, pos_start, var_start,
                                              cigar_tuples, PADDING, PADDING+1, PADDING+1, True),
@@ -401,16 +381,11 @@ class VariantAnalyzer:
                     )
                     
                     # Assign based on minimum edit distance
-                    #if edit_dist_0/len(seq_hap0) < edit_dist_1/len(seq_hap1) and edit_dist_0 <= 5:
                     if edit_dist_0/len(seq_hap0) < edit_dist_1/len(seq_hap1) and edit_dist_0 < 5: #len(seq_hap0) * 0.2:
                         match_flag_0 = 1
                     elif edit_dist_1/len(seq_hap1) < edit_dist_0/len(seq_hap0) and edit_dist_1 < 5: #len(seq_hap1) * 0.2:
                         match_flag_1 = 1
 
-                    #if var_start <= 8031700 and var_start >= 8031698:
-                    #    print(len(seq_hap0), len(seq_hap1), edit_dist_0, edit_dist_1, match_flag_0, match_flag_1, len(seq_hap0) * 0.2, len(seq_hap1) * 0.2)
-            #if base_var_start <= 8031700 and base_var_start >= 8031698:
-            #    print("===========", len(seq_hap0), len(seq_hap1), match_flag_0, match_flag_1)
 
 
             # Update statistics based on matching results
@@ -834,10 +809,10 @@ class VariantAnalyzer:
 
 
 def analyze_read(list_info):
-    path_vcf, path_bam, path_ref, golden_pickle, run_id, real_data, out, chromosome = list_info
+    path_vcf, path_bam, path_ref, golden_pickle, run_id, real_data, out, chromosome, max_len_diff = list_info
     analyzer = VariantAnalyzer(path_vcf, path_bam, path_ref, 
                                    golden_pickle, run_id, 
-                                   real_data, out, chromosome)
+                                   real_data, out, chromosome, max_len_diff)
     return analyzer.analyze()
 
 def write_report(path_out, result, real_data: bool):
@@ -879,6 +854,8 @@ def parse_arguments():
     parser.add_argument('-i', '--run_id', help='Tag for run_id, can be used to indicate chromosome number')
     parser.add_argument('-t', '--thread', help='Number of threads', type=int, default=8)
     parser.add_argument('-o', '--out', help='Output file', required=True)
+    parser.add_argument('-m', '--max_len_diff', type=int, default=20,
+                       help='Maximum length difference between haplotypes for edit distance calculation [20]')
     return parser.parse_args()
 
 
@@ -892,14 +869,14 @@ def main():
     real_data = args.real_data
     out = args.out
     thread = args.thread
-
+    max_len_diff = args.max_len_diff
     list_chromosome = []
     for chromosome in pysam.VariantFile(vcf_file).header.contigs.keys():
         if 'random' in chromosome or 'chrUn' in chromosome or 'alt' in chromosome or 'chrEBV' in chromosome or 'chrM' in chromosome:
             continue
         list_chromosome.append(chromosome)
     
-    list_info = [(vcf_file, bam_file, ref_file, pickle_file, run_id, real_data, out, chromosome) for chromosome in list_chromosome]
+    list_info = [(vcf_file, bam_file, ref_file, pickle_file, run_id, real_data, out, chromosome, max_len_diff) for chromosome in list_chromosome]
     with multiprocessing.Pool(thread) as pool:
         result = pool.map(analyze_read, list_info)
     write_report(out, result, real_data)

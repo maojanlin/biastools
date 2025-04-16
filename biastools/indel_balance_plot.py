@@ -137,8 +137,6 @@ def plot_balance(balance_delete, balance_SNP, balance_insert, output_name, len_b
     
     prop_cycle = plt.rcParams['axes.prop_cycle']
     colors = prop_cycle.by_key()['color']
-    # temp color palette
-    colors = ["#E53935", "#64B5F6", "#1E88E5", "#FB8C00", "#673AB7", "#E040FB"]
     
     # Adjust the subplot parameters to give specified padding
     f.subplots_adjust(right=0.85, hspace=0.1)  # Make room for legend on right
