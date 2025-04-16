@@ -5,7 +5,23 @@ import os.path
 from os import path
 import pysam
 import numpy as np
+from scipy.stats import chisquare
+from typing import List, Tuple, Dict, Union
 
+
+def chi_square_test(var_start: int, list_pos_start: List[int]) -> float:
+    if len(list_pos_start) < 2:
+        return 0
+    bucket_num = 5
+    bucket_len = int(100 / bucket_num)
+    list_count = np.zeros(bucket_num)
+    input_idx = np.minimum((var_start - np.array(list_pos_start)) // bucket_len, bucket_num - 1)
+    try:
+        np.add.at(list_count, input_idx, 1)
+    except IndexError:
+        print(var_start, list_pos_start)
+    _, p_value = chisquare(list_count)
+    return 0 if np.isnan(p_value) else p_value
 
 
 def get_division(num_1, num_2):
