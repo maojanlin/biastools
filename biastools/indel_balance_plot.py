@@ -82,7 +82,7 @@ def addlabels(x, y, len_bd):
         plt.text(i-len_bd, y[i], label, ha='center', va='bottom', fontsize=8)  # Added 30 degree rotation
 
 
-def plot_balance(balance_delete, balance_SNP, balance_insert, output_name, len_bd, list_incidents, list_plot_name, use_mean=False):
+def plot_balance(balance_delete, balance_SNP, balance_insert, output_name, len_bd, list_incidents, list_plot_name, use_median=False):
     len_plot = len(list_plot_name)
     balance_list = [np.zeros(2*len_bd+1) for idx in range(len_plot)]
     balance_25th = [np.zeros(2*len_bd+1) for idx in range(len_plot)]
@@ -96,7 +96,7 @@ def plot_balance(balance_delete, balance_SNP, balance_insert, output_name, len_b
                 valid_balance = list_balance[~np.isnan(list_balance)]
                 # Calculate 1 - value for all statistics
                 flipped_balance = 1 - valid_balance
-                balance_list[idy][len_bd-1-idx] = np.mean(flipped_balance) if use_mean else np.median(flipped_balance)
+                balance_list[idy][len_bd-1-idx] = np.median(flipped_balance) if use_median else np.mean(flipped_balance)
                 # Note: when we flip values, 75th becomes 25th and vice versa
                 balance_25th[idy][len_bd-1-idx] = np.quantile(flipped_balance, 0.25)  # Was 0.75
                 balance_75th[idy][len_bd-1-idx] = np.quantile(flipped_balance, 0.75)  # Was 0.25
@@ -109,7 +109,7 @@ def plot_balance(balance_delete, balance_SNP, balance_insert, output_name, len_b
     for idy, list_balance in enumerate(np.array(balance_SNP)):
         valid_balance = list_balance[~np.isnan(list_balance)]
         flipped_balance = 1 - valid_balance
-        balance_list[idy][len_bd] = np.mean(flipped_balance) if use_mean else np.median(flipped_balance)
+        balance_list[idy][len_bd] = np.median(flipped_balance) if use_median else np.mean(flipped_balance)
         balance_25th[idy][len_bd] = np.quantile(flipped_balance, 0.25)  # Was 0.75
         balance_75th[idy][len_bd] = np.quantile(flipped_balance, 0.75)  # Was 0.25
     
@@ -120,7 +120,7 @@ def plot_balance(balance_delete, balance_SNP, balance_insert, output_name, len_b
             if len(list_balance) > 1:
                 valid_balance = list_balance[~np.isnan(list_balance)]
                 flipped_balance = 1 - valid_balance
-                balance_list[idy][len_bd+1+idx] = np.mean(flipped_balance) if use_mean else np.median(flipped_balance)
+                balance_list[idy][len_bd+1+idx] = np.median(flipped_balance) if use_median else np.mean(flipped_balance)
                 balance_25th[idy][len_bd+1+idx] = np.quantile(flipped_balance, 0.25)  # Was 0.75
                 balance_75th[idy][len_bd+1+idx] = np.quantile(flipped_balance, 0.75)  # Was 0.25
             else:
@@ -211,8 +211,8 @@ if __name__ == "__main__":
     parser.add_argument('-map', '--flag_mapping', action='store_true', help='show the mapping rather than local result')
     parser.add_argument('-real', '--flag_real', action='store_true', help='specify if the report contains no simulation information')
     parser.add_argument('-out', '--output_name', help="output file name")
-    parser.add_argument('-mean', '--use_mean', action='store_true', 
-                       help='Use mean instead of median for central tendency')
+    parser.add_argument('-median', '--use_median', action='store_true', 
+                       help='Use median instead of mean for central tendency')
     args = parser.parse_args()
 
     list_report = args.list_report
@@ -282,5 +282,5 @@ if __name__ == "__main__":
     # get the incident numbers of the indels
     list_incidents = [len(balance) for balance in list_balance_delete[0]][::-1] + [len(list_balance_SNP[0][0])] + [len(balance) for balance in list_balance_insert[0]]
     
-    plot_balance(balance_delete, balance_SNP, balance_insert, output_name, boundary, list_incidents, list_plot_name, args.use_mean)
+    plot_balance(balance_delete, balance_SNP, balance_insert, output_name, boundary, list_incidents, list_plot_name, args.use_median)
 
