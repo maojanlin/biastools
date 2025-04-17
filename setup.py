@@ -2,7 +2,7 @@ from distutils.core import setup
 setup(
   name = 'biastools',
   packages = ['biastools'],
-  version = '0.3.0',
+  version = '0.3.1',
   license='MIT',
   description = 'The toolkits to analyze reference bias of short DNA read alignment.',
   author = 'Mao-Jan Lin',
