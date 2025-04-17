@@ -72,80 +72,134 @@ def calculate_gap_balance(assign_gap, f_vcf, len_bd, get_idx):
     return list_insert, list_delete
 
 
-def addlabels(x,y,len_bd):
+def addlabels(x, y, len_bd):
     for i in range(len(x)):
-        plt.text(i-len_bd, y[i], y[i], ha = 'center')
+        # Format numbers: use 'k' for values ≥1000, no decimal points
+        if y[i] >= 1000:
+            label = f'{int(y[i]/1000)}k'
+        else:
+            label = str(int(y[i]))
+        plt.text(i-len_bd, y[i], label, ha='center', va='bottom', fontsize=8)  # Added 30 degree rotation
 
 
-def plot_balance(balance_delete, balance_SNP, balance_insert, output_name, len_bd, list_incidents, list_plot_name):
+def plot_balance(balance_delete, balance_SNP, balance_insert, output_name, len_bd, list_incidents, list_plot_name, use_median=False):
     len_plot = len(list_plot_name)
     balance_list = [np.zeros(2*len_bd+1) for idx in range(len_plot)]
-    balance_1st  = [np.zeros(2*len_bd+1) for idx in range(len_plot)]
-    balance_3rd  = [np.zeros(2*len_bd+1) for idx in range(len_plot)]
+    balance_25th = [np.zeros(2*len_bd+1) for idx in range(len_plot)]
+    balance_75th = [np.zeros(2*len_bd+1) for idx in range(len_plot)]
     
+    # Process deletions
     for idy, list_delete in enumerate(balance_delete):
         for idx in range(len_bd):
             list_balance = np.array(list_delete[idx])
             if len(list_balance) > 1:
-                median = np.median(list_balance[~np.isnan(list_balance)])
-                balance_list[idy][len_bd-1-idx] = median
-                balance_1st [idy][len_bd-1-idx] = median - np.quantile(list_balance[~np.isnan(list_balance)], 0.25)
-                balance_3rd [idy][len_bd-1-idx] = np.quantile(list_balance[~np.isnan(list_balance)], 0.75) - median
+                valid_balance = list_balance[~np.isnan(list_balance)]
+                # Calculate 1 - value for all statistics
+                flipped_balance = 1 - valid_balance
+                balance_list[idy][len_bd-1-idx] = np.median(flipped_balance) if use_median else np.mean(flipped_balance)
+                # Note: when we flip values, 75th becomes 25th and vice versa
+                balance_25th[idy][len_bd-1-idx] = np.quantile(flipped_balance, 0.25)  # Was 0.75
+                balance_75th[idy][len_bd-1-idx] = np.quantile(flipped_balance, 0.75)  # Was 0.25
             else:
                 balance_list[idy][len_bd-1-idx] = np.nan
-                balance_1st [idy][len_bd-1-idx] = np.nan
-                balance_3rd [idy][len_bd-1-idx] = np.nan
+                balance_25th[idy][len_bd-1-idx] = np.nan
+                balance_75th[idy][len_bd-1-idx] = np.nan
     
+    # Process SNPs
     for idy, list_balance in enumerate(np.array(balance_SNP)):
-        median = np.median(list_balance[~np.isnan(list_balance)])
-        balance_list[idy][len_bd] = median
-        balance_1st [idy][len_bd] = median - np.quantile(list_balance[~np.isnan(list_balance)], 0.25)
-        balance_3rd [idy][len_bd] = np.quantile(list_balance[~np.isnan(list_balance)], 0.75) - median
+        valid_balance = list_balance[~np.isnan(list_balance)]
+        flipped_balance = 1 - valid_balance
+        balance_list[idy][len_bd] = np.median(flipped_balance) if use_median else np.mean(flipped_balance)
+        balance_25th[idy][len_bd] = np.quantile(flipped_balance, 0.25)  # Was 0.75
+        balance_75th[idy][len_bd] = np.quantile(flipped_balance, 0.75)  # Was 0.25
     
+    # Process insertions
     for idy, list_insert in enumerate(balance_insert):
         for idx in range(len_bd):
             list_balance = np.array(list_insert[idx])
             if len(list_balance) > 1:
-                median = np.median(list_balance[~np.isnan(list_balance)])
-                balance_list[idy][len_bd+1+idx] = median
-                balance_1st [idy][len_bd+1+idx] = median - np.quantile(list_balance[~np.isnan(list_balance)], 0.25)
-                balance_3rd [idy][len_bd+1+idx] = np.quantile(list_balance[~np.isnan(list_balance)], 0.75) - median
+                valid_balance = list_balance[~np.isnan(list_balance)]
+                flipped_balance = 1 - valid_balance
+                balance_list[idy][len_bd+1+idx] = np.median(flipped_balance) if use_median else np.mean(flipped_balance)
+                balance_25th[idy][len_bd+1+idx] = np.quantile(flipped_balance, 0.25)  # Was 0.75
+                balance_75th[idy][len_bd+1+idx] = np.quantile(flipped_balance, 0.75)  # Was 0.25
             else:
                 balance_list[idy][idx+len_bd+1] = np.nan
-                balance_1st[idy][idx+len_bd+1] = np.nan
-                balance_3rd[idy][idx+len_bd+1] = np.nan
-    """
-    for idx in range(len(balance_list[0])):
-        print(idx, balance_list[0][idx], balance_1st[0][idx], balance_3rd[0][idx])
-    print(balance_list[0])
-    print(balance_list[1])
-    print(balance_list[2])
-    print(balance_list[3])
-    """
-    t = list(range(-len_bd,len_bd+1))
-    f, (a0, a1) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3,1]})
-    f.set_size_inches(15,8)
-    #f.figsize = (15,13)
+                balance_25th[idy][idx+len_bd+1] = np.nan
+                balance_75th[idy][idx+len_bd+1] = np.nan
+
+    t = list(range(-len_bd, len_bd+1))
+    f, (a0, a1) = plt.subplots(2, 1, gridspec_kw={
+        'height_ratios': [3, 1],
+        'hspace': 0.1
+    })
+    f.set_size_inches(20, 10)  # Slightly taller to accommodate labels
+    
     prop_cycle = plt.rcParams['axes.prop_cycle']
     colors = prop_cycle.by_key()['color']
-    #colors = colors[:2] + colors[5:]
-    #colors = colors[1:]
-    for idx, name in enumerate(list_plot_name):
-        a0.errorbar(t, (1-balance_list[idx]), yerr=(balance_3rd[idx], balance_1st[idx]), capsize=3, fmt='-o', label=name, color=colors[idx])
     
-    a0.legend()
-    #a0.set_ylim([0.3, 0.7])
+    # Adjust the subplot parameters to give specified padding
+    f.subplots_adjust(right=0.85, hspace=0.1)  # Make room for legend on right
+    
+    for idx, name in enumerate(list_plot_name):
+        # Calculate error bar lengths
+        yerr_minus = balance_list[idx] - balance_25th[idx]
+        yerr_plus = balance_75th[idx] - balance_list[idx]
+        yerr = np.vstack((yerr_minus, yerr_plus))
+        
+        # Plot with asymmetric error bars
+        a0.errorbar(t, balance_list[idx],  # Removed (1-balance_list[idx]) since we already flipped
+                   yerr=yerr, 
+                   capsize=3, fmt='-o', label=name, color=colors[idx],
+                   markersize=6, elinewidth=1, capthick=1)
+    
+    # Move legend inside the upper panel, near the bottom
+    a0.legend(frameon=True, fancybox=True, framealpha=0.9,
+              loc='lower center',  # Place at bottom center
+              bbox_to_anchor=(0.5, 0.05),  # Position slightly above bottom
+              ncol=2)  # Two columns for better space usage
+    
     a0.axhline(y=0.5, color='gray', linestyle='dashdot', linewidth=0.9)
     a0.set(ylabel='Fraction of alternate allele')
+    a0.grid(True, linestyle='--', alpha=0.3)
     
     a1.set(xlabel='Insertion (+) or deletion (-) length')
     a1.set(ylabel='# of variants')
-    a1.bar(t, list_incidents, align='center', width=0.5, log=True)
+    
+    # Increase bar width
+    width = 0.65  # Changed from 0.5 to 0.8 for thicker bars
+    bars = a1.bar(t, list_incidents, align='center', width=width, log=True, linewidth=1)
     a1.set_ylim([1, max(list_incidents)*5])
+    
+    # Create x-ticks only for multiples of 5 and boundaries
+    xticks = []
+    xticklabels = []
+    for x in range(-len_bd, len_bd + 1):
+        if x == -len_bd or x == len_bd or x % 5 == 0:
+            xticks.append(x)
+            if x == -len_bd:
+                xticklabels.append(f"≤-{len_bd}")
+            elif x == len_bd:
+                xticklabels.append(f"≥{len_bd}")
+            else:
+                xticklabels.append(str(x))
+    
+    a1.set_xticks(xticks)
+    a1.set_xticklabels(xticklabels)  # Remove rotation
+    
+    # Use the same x-ticks for the upper plot
+    a0.set_xticks(xticks)
+    a0.set_xticklabels(xticklabels)  # Remove rotation
+    
     addlabels(t, list_incidents, len_bd)
-    #a1.set_yscale('log')
-    a1.grid(axis='y', color='gray', linestyle='dashdot', linewidth=0.6)
-    plt.savefig(output_name + '.indel_balance.pdf')
+    a1.grid(axis='y', linestyle='--', alpha=0.3)
+    
+    a0.set_xlim(a1.get_xlim())
+    
+    # Adjust subplot spacing
+    f.subplots_adjust(hspace=0.1)  # Keep minimal space between plots
+    
+    plt.savefig(output_name + '.indel_balance.pdf', bbox_inches='tight', dpi=300)
 
 
 if __name__ == "__main__":
@@ -157,6 +211,8 @@ if __name__ == "__main__":
     parser.add_argument('-map', '--flag_mapping', action='store_true', help='show the mapping rather than local result')
     parser.add_argument('-real', '--flag_real', action='store_true', help='specify if the report contains no simulation information')
     parser.add_argument('-out', '--output_name', help="output file name")
+    parser.add_argument('-median', '--use_median', action='store_true', 
+                       help='Use median instead of mean for central tendency')
     args = parser.parse_args()
 
     list_report = args.list_report
@@ -185,7 +241,7 @@ if __name__ == "__main__":
         list_balance_SNP.append(balance_SNP)
 
     if flag_real: # no simulation of mapping information provided
-        list_plot_name = [name + '(real)' for name in list_name]
+        list_plot_name = list_name #[name + '(real)' for name in list_name]
         
         # fetch the gap balance information
         list_balance_delete = []
@@ -226,5 +282,5 @@ if __name__ == "__main__":
     # get the incident numbers of the indels
     list_incidents = [len(balance) for balance in list_balance_delete[0]][::-1] + [len(list_balance_SNP[0][0])] + [len(balance) for balance in list_balance_insert[0]]
     
-    plot_balance(balance_delete, balance_SNP, balance_insert, output_name, boundary, list_incidents, list_plot_name)
+    plot_balance(balance_delete, balance_SNP, balance_insert, output_name, boundary, list_incidents, list_plot_name, args.use_median)
 

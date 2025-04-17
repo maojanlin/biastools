@@ -1,4 +1,3 @@
-
 import argparse
 import multiprocessing
 import pickle
@@ -8,6 +7,7 @@ from scipy.stats import chisquare
 from typing import List, Tuple, Dict, Union
 from collections import defaultdict
 import logging
+import edlib
 
 
 # Constants
@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 class VariantAnalyzer:
     def __init__(self, vcf_file: str, sam_file: str, fasta_file: str, 
                  golden_pickle: str = None, run_id: str = None, 
-                 real_data: bool = False, output_file: str = "output.rpt", chromosome: str=None):
+                 real_data: bool = False, output_file: str = "output.rpt", chromosome: str=None,
+                 max_len_diff: int = 20):
         self.chromosome = chromosome
         self.f_vcf = pysam.VariantFile(vcf_file)
         self.f_sam = pysam.AlignmentFile(sam_file)
@@ -35,6 +36,7 @@ class VariantAnalyzer:
         self.dict_set_conflict_vars = defaultdict(set)
         self.dict_ref_bias = defaultdict(lambda: defaultdict(lambda: {'n_read':[0,0,0], 'n_var':[0,0,0,0], 'map_q':[0,0,0], 'distribute':[[],[],[],[]]}))
         self.dict_ref_var_pos = defaultdict(lambda: [[],[]])
+        self.max_len_diff = max_len_diff
         print(f"start initializing {self.chromosome}")
         
         if not self.real_data and self.golden_pickle:
@@ -87,6 +89,7 @@ class VariantAnalyzer:
                     ref_extend = self.f_fasta.fetch(reference=ref_name, start=var_stop, end=var_stop+EXTEND_LIMIT+PADDING)
                     seq_hap0, seq_hap1, len_extend = self.extend_ref_seq_padding(seq_hap0, seq_hap1, ref_extend, ref_extend, True, PADDING)
                     var_stop += len_extend
+                    # Keep the sign of vcf_length for effective_length
                 elif flag_side == 1: # left side
                     ref_extend = self.f_fasta.fetch(reference=ref_name, start=var_start-EXTEND_LIMIT-PADDING, end=var_start)
                     seq_hap0, seq_hap1, len_extend = self.extend_ref_seq_padding(seq_hap0, seq_hap1, ref_extend, ref_extend, False, PADDING)
@@ -314,31 +317,78 @@ class VariantAnalyzer:
             if base_var_start in self.dict_set_conflict_vars[ref_name]: # neglecting the conflict variant sites
                 continue
 
-            # 1 for match, 0 for unmatch, -1 for not cover
-            match_flag_0 = 0
-            match_flag_1 = 0
+            match_flag_0 = match_flag_1 = 0
             
-            # 1. Cohort alignment
-            if self.dict_ref_cohorts[ref_name].get(base_var_start): # Anchor Left
-                cohort_start, cohort_stop, cohort_seq0, cohort_seq1, lpad_0, lpad_1, rpad_0, rpad_1 = self.dict_ref_cohorts[ref_name][base_var_start] 
-                match_flag_0 = self.match_to_hap(seq_name, ref_name, pos_start, pos_end, cohort_start, read_seq, cohort_seq0, cigar_tuples, PADDING, lpad_0+1, rpad_0+1, True)
-                if match_flag_0 != 1: # Left doesn't work, anchor Right
-                    match_flag_0 = max(match_flag_0, self.match_to_hap(seq_name, ref_name, pos_start, pos_end, cohort_stop, read_seq, cohort_seq0, cigar_tuples, PADDING, lpad_0+1, rpad_0+1, False))
-                match_flag_1 = self.match_to_hap(seq_name, ref_name, pos_start, pos_end, cohort_start, read_seq, cohort_seq1, cigar_tuples, PADDING, lpad_1+1, rpad_1+1, True)
-                if match_flag_1 != 1: # Left doesn't work, anchor Right
-                    match_flag_1 = max(match_flag_1, self.match_to_hap(seq_name, ref_name, pos_start, pos_end, cohort_stop, read_seq, cohort_seq1, cigar_tuples, PADDING, lpad_1+1, rpad_1+1, False))
             
-            # 2. Local alignment
-            if match_flag_0 == match_flag_1: # both or others
-                var_start, var_stop, seq_hap0, seq_hap1 = self.dict_ref_haps[ref_name][base_var_start]
-                match_flag_0 = self.match_to_hap(seq_name, ref_name, pos_start, pos_end, var_start, read_seq, seq_hap0, cigar_tuples, PADDING, PADDING+1, PADDING+1, True)
+            # Try cohort alignment first with exact matching
+            if self.dict_ref_cohorts[ref_name].get(base_var_start):
+                cohort_start, cohort_stop, cohort_seq0, cohort_seq1, lpad_0, lpad_1, rpad_0, rpad_1 = self.dict_ref_cohorts[ref_name][base_var_start]
+                
+                # Try exact matches for hap0 at both anchor points
+                match_flag_0 = self.match_to_hap(seq_name, ref_name, pos_start, pos_end,
+                                               cohort_start, read_seq, cohort_seq0,
+                                               cigar_tuples, PADDING, lpad_0+1, rpad_0+1, True)
                 if match_flag_0 != 1:
-                    match_flag_0 = max(match_flag_0, self.match_to_hap(seq_name, ref_name, pos_start, pos_end, var_stop, read_seq, seq_hap0, cigar_tuples, PADDING, PADDING+1, PADDING+1, False))
-                match_flag_1 = self.match_to_hap(seq_name, ref_name, pos_start, pos_end, var_start, read_seq, seq_hap1, cigar_tuples, PADDING, PADDING+1, PADDING+1, True)
+                    match_flag_0 = max(match_flag_0, self.match_to_hap(seq_name, ref_name, pos_start, pos_end,
+                                                   cohort_stop, read_seq, cohort_seq0,
+                                                   cigar_tuples, PADDING, lpad_0+1, rpad_0+1, False))
+
+                # Try exact matches for hap1 at both anchor points
+                match_flag_1 = self.match_to_hap(seq_name, ref_name, pos_start, pos_end,
+                                               cohort_start, read_seq, cohort_seq1,
+                                               cigar_tuples, PADDING, lpad_1+1, rpad_1+1, True)
                 if match_flag_1 != 1:
-                    match_flag_1 = max(match_flag_1, self.match_to_hap(seq_name, ref_name, pos_start, pos_end, var_stop, read_seq, seq_hap1, cigar_tuples, PADDING, PADDING+1, PADDING+1, False))
-            
-            # 3. Assign Values
+                    match_flag_1 = max(match_flag_1, self.match_to_hap(seq_name, ref_name, pos_start, pos_end,
+                                                   cohort_stop, read_seq, cohort_seq1,
+                                                   cigar_tuples, PADDING, lpad_1+1, rpad_1+1, False))
+
+            # Try local alignment if cohort didn't give definitive result
+            #if match_flag_0 != 1 and match_flag_1 != 1:
+            if match_flag_0 == match_flag_1:
+                var_start, var_stop, seq_hap0, seq_hap1, *_ = self.dict_ref_haps[ref_name][base_var_start]
+                
+                # Try exact matches for both haplotypes at both anchor points
+                match_flag_0 = self.match_to_hap(seq_name, ref_name, pos_start, pos_end,
+                                               var_start, read_seq, seq_hap0,
+                                               cigar_tuples, PADDING, PADDING+1, PADDING+1, True)
+                if match_flag_0 != 1:
+                    match_flag_0 = max(match_flag_0, self.match_to_hap(seq_name, ref_name, pos_start, pos_end,
+                                                   var_stop, read_seq, seq_hap0,
+                                                   cigar_tuples, PADDING, PADDING+1, PADDING+1, False))
+
+                match_flag_1 = self.match_to_hap(seq_name, ref_name, pos_start, pos_end,
+                                               var_start, read_seq, seq_hap1,
+                                               cigar_tuples, PADDING, PADDING+1, PADDING+1, True)
+                if match_flag_1 != 1:
+                    match_flag_1 = max(match_flag_1, self.match_to_hap(seq_name, ref_name, pos_start, pos_end,
+                                                   var_stop, read_seq, seq_hap1,
+                                                   cigar_tuples, PADDING, PADDING+1, PADDING+1, False))
+
+                # If both exact matches failed, try edit distance at both anchor points
+                if (match_flag_0 != -1 and match_flag_1 != -1) and (match_flag_0 != 1 and match_flag_1 != 1) \
+                    and abs(len(seq_hap0) - len(seq_hap1)) <= self.max_len_diff:
+                    edit_dist_0 = min(
+                        self.get_edit_distance(read_seq, seq_hap0, pos_start, var_start,
+                                             cigar_tuples, PADDING, PADDING+1, PADDING+1, True),
+                        self.get_edit_distance(read_seq, seq_hap0, pos_start, var_stop,
+                                             cigar_tuples, PADDING, PADDING+1, PADDING+1, False)
+                    )
+                    edit_dist_1 = min(
+                        self.get_edit_distance(read_seq, seq_hap1, pos_start, var_start,
+                                             cigar_tuples, PADDING, PADDING+1, PADDING+1, True),
+                        self.get_edit_distance(read_seq, seq_hap1, pos_start, var_stop,
+                                             cigar_tuples, PADDING, PADDING+1, PADDING+1, False)
+                    )
+                    
+                    # Assign based on minimum edit distance
+                    if edit_dist_0/len(seq_hap0) < edit_dist_1/len(seq_hap1) and edit_dist_0 < 5: #len(seq_hap0) * 0.2:
+                        match_flag_0 = 1
+                    elif edit_dist_1/len(seq_hap1) < edit_dist_0/len(seq_hap0) and edit_dist_1 < 5: #len(seq_hap1) * 0.2:
+                        match_flag_1 = 1
+
+
+
+            # Update statistics based on matching results
             if base_var_start not in direct_var_start:
                 if not ((match_flag_0 == 1 and match_flag_1 != 1) or (match_flag_1 == 1 and  match_flag_0 !=1)):
                     continue
@@ -727,12 +777,42 @@ class VariantAnalyzer:
                 logger.error(f"Unexpected CIGAR code {code}")
         return read_cursor
 
+    def get_edit_distance(self, seq_read: str, seq_hap: str, pos_start: int, var_start: int,
+                         cigar_tuples: List[Tuple[int, int]], padding: int,
+                         l_min_req: int, r_min_req: int, start_flag: bool = True) -> int:
+        r_start = self.locate_by_cigar(pos_start, var_start, cigar_tuples)
+        
+        if start_flag:
+            l_bound = r_start - padding
+            r_bound = l_bound + len(seq_hap)
+        else:
+            r_bound = r_start + padding
+            l_bound = r_bound - len(seq_hap)
+
+        # Boundary checks
+        if l_bound < 0:
+            seq_hap_adj = seq_hap[-l_bound:]
+            l_bound = 0
+            if len(seq_hap_adj) < r_min_req:
+                return float('inf')
+        if r_bound > len(seq_read):
+            seq_hap_adj = seq_hap[:len(seq_read)-r_bound]
+            r_bound = len(seq_read)
+            if len(seq_hap_adj) < l_min_req:
+                return float('inf')
+        
+        read_segment = seq_read[l_bound:r_bound].upper()
+        hap_segment = seq_hap.upper()
+        
+        result = edlib.align(read_segment, hap_segment, task='distance')
+        return result['editDistance']
+
 
 def analyze_read(list_info):
-    path_vcf, path_bam, path_ref, golden_pickle, run_id, real_data, out, chromosome = list_info
+    path_vcf, path_bam, path_ref, golden_pickle, run_id, real_data, out, chromosome, max_len_diff = list_info
     analyzer = VariantAnalyzer(path_vcf, path_bam, path_ref, 
                                    golden_pickle, run_id, 
-                                   real_data, out, chromosome)
+                                   real_data, out, chromosome, max_len_diff)
     return analyzer.analyze()
 
 def write_report(path_out, result, real_data: bool):
@@ -774,6 +854,8 @@ def parse_arguments():
     parser.add_argument('-i', '--run_id', help='Tag for run_id, can be used to indicate chromosome number')
     parser.add_argument('-t', '--thread', help='Number of threads', type=int, default=8)
     parser.add_argument('-o', '--out', help='Output file', required=True)
+    parser.add_argument('-m', '--max_len_diff', type=int, default=20,
+                       help='Maximum length difference between haplotypes for edit distance calculation [20]')
     return parser.parse_args()
 
 
@@ -787,14 +869,14 @@ def main():
     real_data = args.real_data
     out = args.out
     thread = args.thread
-
+    max_len_diff = args.max_len_diff
     list_chromosome = []
     for chromosome in pysam.VariantFile(vcf_file).header.contigs.keys():
         if 'random' in chromosome or 'chrUn' in chromosome or 'alt' in chromosome or 'chrEBV' in chromosome or 'chrM' in chromosome:
             continue
         list_chromosome.append(chromosome)
     
-    list_info = [(vcf_file, bam_file, ref_file, pickle_file, run_id, real_data, out, chromosome) for chromosome in list_chromosome]
+    list_info = [(vcf_file, bam_file, ref_file, pickle_file, run_id, real_data, out, chromosome, max_len_diff) for chromosome in list_chromosome]
     with multiprocessing.Pool(thread) as pool:
         result = pool.map(analyze_read, list_info)
     write_report(out, result, real_data)
