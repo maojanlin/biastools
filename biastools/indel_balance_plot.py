@@ -137,7 +137,7 @@ def plot_balance(balance_delete, balance_SNP, balance_insert, output_name, len_b
     
     prop_cycle = plt.rcParams['axes.prop_cycle']
     colors = prop_cycle.by_key()['color']
-    
+
     # Adjust the subplot parameters to give specified padding
     f.subplots_adjust(right=0.85, hspace=0.1)  # Make room for legend on right
     
@@ -145,6 +145,9 @@ def plot_balance(balance_delete, balance_SNP, balance_insert, output_name, len_b
         # Calculate error bar lengths
         yerr_minus = balance_list[idx] - balance_25th[idx]
         yerr_plus = balance_75th[idx] - balance_list[idx]
+        # make sure the error bar is not negative
+        yerr_minus = np.maximum(yerr_minus, 0)
+        yerr_plus = np.maximum(yerr_plus, 0)
         yerr = np.vstack((yerr_minus, yerr_plus))
         
         # Plot with asymmetric error bars
