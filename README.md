@@ -1,5 +1,5 @@
 
-_Updated: Sep 19, 2023_
+_Updated: Apr 17, 2025_
 # Biastools: Measuring, visualizing and diagnosing reference bias
 
 This github is originally forked from https://github.com/sheila12345/biastools
@@ -58,24 +58,28 @@ Biastools supports [Bowtie 2](https://github.com/BenLangmead/bowtie2) and [bwa m
 $ biastools --analyze -o <work_dir> -g <ref.fa> -v <vcf> -s <sample_name> -r <run_id>
 ```
 
-#### Real sequence data
-Biastools can also analyze real sequence data with the `-R` option using the context-aware assignment algorithm. The resulting plot does not include simulation information (`sample_id.real.indel_balance.pdf`).
+#### Direct Analysis on Real sequence data
+Biastools can also analyze real sequence data with the `--real` option using the context-aware assignment algorithm. The resulting plot does not include simulation information (`sample_id.real.indel_balance.pdf`).
 ```
-$ biastools --analyze -R -o <work_dir> -g <ref.fa> -v <vcf> -s <sample_name> -r <run_id> \
+$ biastools --analyze --real -t <thread> -o <work_dir> -g <ref.fa> -v <vcf> -s <sample_name> -r <run_id> \
                       --bam <path_to_target.bam>
 ```
+Biastools first fetches the relevant alignments from the target BAM file, focusing only on heterozygous variant sites specified in the VCF file. These sites are then analyzed using a [context-aware algorithm](figures/context_aware.md). Finally, Biastools generates a bias report along with a bias-by-allele-length plot, both included in the output folder.
 
 
+#### Combined Bias-by-allele-length plot
+Multiple analysis results can be combined into a single Bias-by-allele-length plot. In biastools version 0.3.1, the default plotting module displays the 25th percentile, mean, and 75th percentile of the fraction of ALT alleles for variants stratified by allele length, using ticks to indicate the interquartile range and a central dot to mark the mean.
 
-#### Multiple indel plots
-Multiple analysis result can be combined into one single indel-balance plot.
 ```
 $ biastools --analyze -o <work_dir> -g <ref.fa> -v <vcf> -s <sample_name> -r <run_id> \
-                      -lr file1.bias file2.bias file3.bias... \
+                      -lr file1.bias.all file2.bias.all file3.bias.all... \
                       -ld run_id1 run_id2 run_id3...
 ```
 
-The output file `sample_name.combine.sim.indel_balance.pdf` merges the indel information of the bias reports after the `-l` option with the simulated balance information. For real bias report only, using the `-R` option to generate combined plot file `sample_name.combine.real.indel_balance.pdf` without simulated balance.
+The output file `sample_name.combine.sim.indel_balance.pdf` plots the fraction of ALT alleles merged from the bias reports specified after the `-lr` option.  Users can use `-ld` option to specify the tool names, which will appear in the legend. To generate a combined plot using only real data bias reports (excluding simulation information), use the `--real` option.
+
+An example of a combined bias-by-allele-length plot:
+![multiple_indel_plot](figures/HG002.GIAB.4.2.1.demo.indel_balance.png?raw=true "multiple_indel_plot")
 
 
 ### Bias prediction from bias report
