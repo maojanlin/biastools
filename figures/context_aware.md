@@ -1,7 +1,7 @@
 ## Context-aware assignment algorithm
 This method works by searching for the REF and ALT alleles, together with some of their flanking sequence, within the sequences of all the reads that aligned overlapping the variant.
 Details were shown in the [paper](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-024-03240-8).
-![diagram](./figures/context-aware-assignment.png)
+![diagram](./context-aware-assignment.png)
 
 ### Cohort assignment
 Variants appearing within a short distance (default: 25 bp) together into a “cohort.”  The cohorts are compared in the same style of local assignment.
