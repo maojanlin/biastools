@@ -1,5 +1,5 @@
 
-_Updated: Apr 17, 2025_
+_Updated: Mar 12, 2026_
 # Biastools: Measuring, visualizing and diagnosing reference bias
 
 This github is originally forked from https://github.com/sheila12345/biastools
@@ -80,6 +80,17 @@ The output file `sample_name.combine.sim.indel_balance.pdf` plots the fraction o
 
 An example of a combined bias-by-allele-length plot:
 ![multiple_indel_plot](figures/HG002.GIAB.4.2.1.demo.indel_balance.png?raw=true "multiple_indel_plot")
+
+In case you want to compare bias reports across two different coordinate systems.  For example, alignments between HG002 and CHM13, or between chromosome 12 and chromosome 13, you can submit multiple VCF files using the plot merging feature.
+
+```
+$ biastools --analyze -o <work_dir> -g <ref.fa> -s <sample_name> -r <run_id> \
+                      -lr chr1.bias.all chr2.bias.all chr3.bias.all \
+                      -ld chr1 chr2 chr3 \
+                      --vcf chr1.vcf.gz chr2.vcf.gz chr3.vcf.gz
+```
+
+Note that in this case, the lower panel will only show the number of variants from the first VCF file.  So take the comparison with a grain of salt, since it is not exactly an apple-to-apple comparison.  In our paper, we surjected the alignments of different tools to one single coordinate before comparison.
 
 
 ### Bias prediction from bias report
