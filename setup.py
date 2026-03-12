@@ -6,9 +6,11 @@ with open("README.md", "r", encoding="utf-8") as f:
 setup(
   name = 'biastools',
   packages = ['biastools'],
-  version = '0.3.2',
+  version = '0.3.3',
   license='MIT',
   description = 'The toolkits to analyze reference bias of short DNA read alignment.',
+  long_description=long_description,
+  long_description_content_type="text/markdown",
   author = 'Mao-Jan Lin',
   author_email = 'mj.maojanlin@gmail.com',
   url = 'https://github.com/maojanlin/biastools',
