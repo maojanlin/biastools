@@ -34,6 +34,48 @@ def catch_assert(parser, message):
     exit(1)
 
 
+def ensure_processed_vcf(path_ref, path_vcf, path_output, sample_id, path_module, parser):
+    """
+    Ensure that the processed heterozygous VCF (<out>/<sample_id>.het.vcf.gz) exists.
+    If it doesn't, regenerate it in the same way as in the simulation/analysis shell scripts.
+    """
+    het_vcf_path = path_output + '/' + sample_id + '.het.vcf.gz'
+    if os.path.exists(het_vcf_path):
+        return het_vcf_path
+
+    try:
+        assert path_ref is not None
+        assert path_vcf is not None
+    except AssertionError:
+        catch_assert(
+            parser,
+            "<genome> and <vcf> should be specified when using --analyze "
+            "if the processed VCF does not already exist in the output directory.",
+        )
+
+    prefix = path_output + '/' + sample_id
+    print("[Biastools] Prepare processed VCF for analysis...")
+    # Normalize the input VCF against the reference
+    subprocess.check_call([
+        'bcftools', 'norm',
+        '-f', path_ref,
+        path_vcf,
+        '-m', '+any',
+        '-Oz',
+        '-o', prefix + '.normalized.vcf.gz',
+    ])
+    subprocess.check_call(['bcftools', 'index', prefix + '.normalized.vcf.gz'])
+
+    # Filter heterozygous sites and index the resulting VCF
+    subprocess.check_call([
+        'python3',
+        path_module + 'filter_het_VCF.py',
+        '-v', prefix + '.normalized.vcf.gz',
+        '-o', het_vcf_path,
+    ])
+    subprocess.check_call(['tabix', '-p', 'vcf', het_vcf_path])
+
+    return het_vcf_path
 
 
 def main():
@@ -169,14 +211,23 @@ def main():
         subprocess.call(command, shell=True)
     if flag_analyze:
         if list_report != None:
+            # Ensure the processed VCF exists (or regenerate it) before plotting.
+            het_vcf_path = ensure_processed_vcf(
+                path_ref=path_ref,
+                path_vcf=path_vcf,
+                path_output=path_output,
+                sample_id=sample_id,
+                path_module=path_module,
+                parser=parser,
+            )
             print("[Biastools] Plot the indel balance plot for multiple bias reports...")
             if flag_real:
                 subprocess.call(['python3', path_module+'indel_balance_plot.py', "-lr"] + list_report + ["-ln"] + list_run_id + [  \
-                                            "-vcf", path_output+"/"+sample_id+".het.vcf.gz", "-bd", str(boundary), "-map", \
+                                            "-vcf", het_vcf_path, "-bd", str(boundary), "-map", \
                                             "-out", path_output+"/"+sample_id+"."+run_id+".real", "-real"])
             else:
                 subprocess.call(['python3', path_module+'indel_balance_plot.py', "-lr"] + list_report + ["-ln"] + list_run_id + [ \
-                                            "-vcf", path_output+"/"+sample_id+".het.vcf.gz", "-bd", str(boundary), "-map", \
+                                            "-vcf", het_vcf_path, "-bd", str(boundary), "-map", \
                                             "-out", path_output+"/"+sample_id+"."+run_id+".sim"])
         else:
             try:
