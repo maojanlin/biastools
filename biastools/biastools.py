@@ -79,8 +79,8 @@ def ensure_processed_vcf(path_ref, path_vcf, path_output, sample_id, path_module
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Simulation/Alignment/Analyzing/Prediction module of the Biastools v0.3.2")
-    parser.add_argument('--version', action='version', version='%(prog)s 0.3.2')
+    parser = argparse.ArgumentParser(description="Simulation/Alignment/Analyzing/Prediction module of the Biastools v0.3.3")
+    parser.add_argument('--version', action='version', version='%(prog)s 0.3.3')
     parser.add_argument('-o', '--out', help="Path to output directory ['out_dir'].", default="out_dir")
     parser.add_argument('-g', '--genome', help="Path to the reference genome.")
     parser.add_argument('-v', '--vcf', nargs='+',
