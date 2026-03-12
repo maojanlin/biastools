@@ -83,7 +83,10 @@ def main():
     parser.add_argument('--version', action='version', version='%(prog)s 0.3.1')
     parser.add_argument('-o', '--out', help="Path to output directory ['out_dir'].", default="out_dir")
     parser.add_argument('-g', '--genome', help="Path to the reference genome.")
-    parser.add_argument('-v', '--vcf', help="Path to the personal vcf file.")
+    parser.add_argument('-v', '--vcf', nargs='+',
+                        help="Path(s) to VCF file(s). For simulation/align/single-run analyze, "
+                             "provide exactly one. For multi-report analyze, you may provide "
+                             "one VCF shared by all reports or one per report.")
     parser.add_argument('-s', '--sample_id', help="Sample ID ['sample'].", default="sample")
     parser.add_argument('-r', '--run_id', help="Run ID ['run'].", default="run")
     # Process options
@@ -113,11 +116,14 @@ def main():
     
     ##### Parameters for biastool_analysis
     path_output = args.out
-    path_ref   = args.genome
-    path_vcf   = args.vcf
-    sample_id  = args.sample_id
-    run_id     = args.run_id
-    bam_file   = args.bam
+    path_ref    = args.genome
+    vcf_list    = args.vcf  # may be None or a list of one/many paths
+    # For steps that only support a single VCF (simulate/align/single-run analyze),
+    # use the first entry when provided.
+    path_vcf    = vcf_list[0] if vcf_list else None
+    sample_id   = args.sample_id
+    run_id      = args.run_id
+    bam_file    = args.bam
     if bam_file == None:
         bam_file = path_output + '/' + sample_id + '.' + run_id + '.sorted.bam'
     
@@ -159,6 +165,17 @@ def main():
             assert len(list_report) == len(list_run_id)
         except AssertionError:
             catch_assert(parser, "Number of list --list_report and --list_run_id entries are inconsistent.")
+
+    # Multiple VCF paths are only meaningful for multi-report analyze mode,
+    # where each bias report can have its own VCF. For all other modes, require
+    # at most one VCF path.
+    if vcf_list and len(vcf_list) > 1:
+        if not (flag_analyze and list_report):
+            catch_assert(
+                parser,
+                "Multiple --vcf paths are only supported when using --analyze "
+                "together with --list_report/--list_run_id.",
+            )
 
     sim_report  = args.sim_report
     real_report = args.real_report
@@ -211,24 +228,47 @@ def main():
         subprocess.call(command, shell=True)
     if flag_analyze:
         if list_report != None:
-            # Ensure the processed VCF exists (or regenerate it) before plotting.
-            het_vcf_path = ensure_processed_vcf(
-                path_ref=path_ref,
-                path_vcf=path_vcf,
-                path_output=path_output,
-                sample_id=sample_id,
-                path_module=path_module,
-                parser=parser,
-            )
+            # Multi-report indel balance plotting.
+            # If multiple VCFs are provided, pass them directly through to
+            # indel_balance_plot.py, one per report. Otherwise, ensure the
+            # processed VCF for this sample exists and use it for all reports.
+            if vcf_list and len(vcf_list) > 1:
+                if len(vcf_list) != len(list_report):
+                    catch_assert(
+                        parser,
+                        "When providing multiple --vcf paths, their number must "
+                        "match the number of --list_report entries.",
+                    )
+                vcf_args = ["-vcf"] + vcf_list
+            else:
+                # Ensure the processed VCF exists (or regenerate it) before plotting.
+                het_vcf_path = ensure_processed_vcf(
+                    path_ref=path_ref,
+                    path_vcf=path_vcf,
+                    path_output=path_output,
+                    sample_id=sample_id,
+                    path_module=path_module,
+                    parser=parser,
+                )
+                vcf_args = ["-vcf", het_vcf_path]
+
             print("[Biastools] Plot the indel balance plot for multiple bias reports...")
             if flag_real:
-                subprocess.call(['python3', path_module+'indel_balance_plot.py', "-lr"] + list_report + ["-ln"] + list_run_id + [  \
-                                            "-vcf", het_vcf_path, "-bd", str(boundary), "-map", \
-                                            "-out", path_output+"/"+sample_id+"."+run_id+".real", "-real"])
+                subprocess.call(
+                    ['python3', path_module+'indel_balance_plot.py', "-lr"] + list_report
+                    + ["-ln"] + list_run_id
+                    + vcf_args
+                    + ["-bd", str(boundary), "-map",
+                       "-out", path_output+"/"+sample_id+"."+run_id+".real", "-real"]
+                )
             else:
-                subprocess.call(['python3', path_module+'indel_balance_plot.py', "-lr"] + list_report + ["-ln"] + list_run_id + [ \
-                                            "-vcf", het_vcf_path, "-bd", str(boundary), "-map", \
-                                            "-out", path_output+"/"+sample_id+"."+run_id+".sim"])
+                subprocess.call(
+                    ['python3', path_module+'indel_balance_plot.py', "-lr"] + list_report
+                    + ["-ln"] + list_run_id
+                    + vcf_args
+                    + ["-bd", str(boundary), "-map",
+                       "-out", path_output+"/"+sample_id+"."+run_id+".sim"]
+                )
         else:
             try:
                 assert path_ref != None
