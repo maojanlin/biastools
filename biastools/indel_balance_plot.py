@@ -3,9 +3,23 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 import math
+import os
+import subprocess
 import numpy as np
 import pysam
 
+
+
+def check_vcf_index(fn_vcf: str):
+    """
+    Ensure that a VCF file is indexed. If no .tbi or .csi index is found,
+    run `tabix -p vcf` to create one.
+    """
+    tbi = fn_vcf + ".tbi"
+    csi = fn_vcf + ".csi"
+    if os.path.exists(tbi) or os.path.exists(csi):
+        return
+    subprocess.check_call(["tabix", "-p", "vcf", fn_vcf])
 
 
 def read_bias_report(fn_bias_report):
@@ -91,42 +105,63 @@ def plot_balance(balance_delete, balance_SNP, balance_insert, output_name, len_b
     # Process deletions
     for idy, list_delete in enumerate(balance_delete):
         for idx in range(len_bd):
-            list_balance = np.array(list_delete[idx])
-            if len(list_balance) > 1:
-                valid_balance = list_balance[~np.isnan(list_balance)]
-                # Calculate 1 - value for all statistics
-                flipped_balance = 1 - valid_balance
-                balance_list[idy][len_bd-1-idx] = np.median(flipped_balance) if use_median else np.mean(flipped_balance)
-                # Note: when we flip values, 75th becomes 25th and vice versa
-                balance_25th[idy][len_bd-1-idx] = np.quantile(flipped_balance, 0.25)  # Was 0.75
-                balance_75th[idy][len_bd-1-idx] = np.quantile(flipped_balance, 0.75)  # Was 0.25
-            else:
+            arr = np.array(list_delete[idx], dtype=float)
+            if arr.size == 0:
                 balance_list[idy][len_bd-1-idx] = np.nan
                 balance_25th[idy][len_bd-1-idx] = np.nan
                 balance_75th[idy][len_bd-1-idx] = np.nan
+                continue
+            valid_balance = arr[~np.isnan(arr)]
+            if valid_balance.size == 0:
+                balance_list[idy][len_bd-1-idx] = np.nan
+                balance_25th[idy][len_bd-1-idx] = np.nan
+                balance_75th[idy][len_bd-1-idx] = np.nan
+                continue
+            # Calculate 1 - value for all statistics
+            flipped_balance = 1 - valid_balance
+            balance_list[idy][len_bd-1-idx] = np.median(flipped_balance) if use_median else np.mean(flipped_balance)
+            # Note: when we flip values, 75th becomes 25th and vice versa
+            balance_25th[idy][len_bd-1-idx] = np.quantile(flipped_balance, 0.25)
+            balance_75th[idy][len_bd-1-idx] = np.quantile(flipped_balance, 0.75)
     
     # Process SNPs
-    for idy, list_balance in enumerate(np.array(balance_SNP)):
-        valid_balance = list_balance[~np.isnan(list_balance)]
+    for idy, snp_values in enumerate(balance_SNP):
+        arr = np.array(snp_values, dtype=float)
+        if arr.size == 0:
+            balance_list[idy][len_bd] = np.nan
+            balance_25th[idy][len_bd] = np.nan
+            balance_75th[idy][len_bd] = np.nan
+            continue
+        valid_balance = arr[~np.isnan(arr)]
+        if valid_balance.size == 0:
+            balance_list[idy][len_bd] = np.nan
+            balance_25th[idy][len_bd] = np.nan
+            balance_75th[idy][len_bd] = np.nan
+            continue
         flipped_balance = 1 - valid_balance
         balance_list[idy][len_bd] = np.median(flipped_balance) if use_median else np.mean(flipped_balance)
-        balance_25th[idy][len_bd] = np.quantile(flipped_balance, 0.25)  # Was 0.75
-        balance_75th[idy][len_bd] = np.quantile(flipped_balance, 0.75)  # Was 0.25
+        balance_25th[idy][len_bd] = np.quantile(flipped_balance, 0.25)
+        balance_75th[idy][len_bd] = np.quantile(flipped_balance, 0.75)
     
     # Process insertions
     for idy, list_insert in enumerate(balance_insert):
         for idx in range(len_bd):
-            list_balance = np.array(list_insert[idx])
-            if len(list_balance) > 1:
-                valid_balance = list_balance[~np.isnan(list_balance)]
-                flipped_balance = 1 - valid_balance
-                balance_list[idy][len_bd+1+idx] = np.median(flipped_balance) if use_median else np.mean(flipped_balance)
-                balance_25th[idy][len_bd+1+idx] = np.quantile(flipped_balance, 0.25)  # Was 0.75
-                balance_75th[idy][len_bd+1+idx] = np.quantile(flipped_balance, 0.75)  # Was 0.25
-            else:
+            arr = np.array(list_insert[idx], dtype=float)
+            if arr.size == 0:
                 balance_list[idy][idx+len_bd+1] = np.nan
                 balance_25th[idy][idx+len_bd+1] = np.nan
                 balance_75th[idy][idx+len_bd+1] = np.nan
+                continue
+            valid_balance = arr[~np.isnan(arr)]
+            if valid_balance.size == 0:
+                balance_list[idy][idx+len_bd+1] = np.nan
+                balance_25th[idy][idx+len_bd+1] = np.nan
+                balance_75th[idy][idx+len_bd+1] = np.nan
+                continue
+            flipped_balance = 1 - valid_balance
+            balance_list[idy][len_bd+1+idx] = np.median(flipped_balance) if use_median else np.mean(flipped_balance)
+            balance_25th[idy][len_bd+1+idx] = np.quantile(flipped_balance, 0.25)
+            balance_75th[idy][len_bd+1+idx] = np.quantile(flipped_balance, 0.75)
 
     t = list(range(-len_bd, len_bd+1))
     f, (a0, a1) = plt.subplots(2, 1, gridspec_kw={
@@ -207,9 +242,13 @@ def plot_balance(balance_delete, balance_SNP, balance_insert, output_name, len_b
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-lr', '--list_report', nargs='+', required=True, help='the list of assignment bias report')
-    parser.add_argument('-ln', '--list_name',   nargs='+', required=True, help='the second bias report')
-    parser.add_argument('-vcf', '--vcf_report', help='the vcf report for the bias report regions')
+    parser.add_argument('-lr', '--list_report', nargs='+', required=True,
+                        help='the list of assignment bias reports')
+    parser.add_argument('-ln', '--list_name',   nargs='+', required=True,
+                        help='names corresponding to each bias report')
+    parser.add_argument('-vcf', '--vcf_report', nargs='+', required=True,
+                        help='VCF file(s) for the bias report regions; '
+                             'either a single VCF for all reports or one per report')
     parser.add_argument('-bd', '--boundary', type=int, default=40, help='the boundary indel lengths extend from 0')
     parser.add_argument('-map', '--flag_mapping', action='store_true', help='show the mapping rather than local result')
     parser.add_argument('-real', '--flag_real', action='store_true', help='specify if the report contains no simulation information')
@@ -220,7 +259,7 @@ if __name__ == "__main__":
 
     list_report = args.list_report
     list_name   = args.list_name
-    fn_vcf = args.vcf_report
+    list_vcf    = args.vcf_report
     boundary = args.boundary
     flag_map = args.flag_mapping
     flag_real = args.flag_real
@@ -229,8 +268,23 @@ if __name__ == "__main__":
         output_name = list_name[0]
 
     assert len(list_report) == len(list_name), "Number of bias_report and bias names are different."
-    
-    f_vcf = pysam.VariantFile(fn_vcf)
+
+    # VCF handling:
+    # - If a single VCF is provided, use it for all reports (backwards compatible).
+    # - If multiple VCFs are provided, require one per report/name and use them pairwise.
+    if len(list_vcf) == 1:
+        # Single shared VCF: ensure it is indexed once and reuse the handle.
+        check_vcf_index(list_vcf[0])
+        shared_vcf = pysam.VariantFile(list_vcf[0])
+        vcf_handles = [shared_vcf for _ in list_report]
+    else:
+        assert len(list_vcf) == len(list_report), \
+            "When providing multiple VCFs, their number must match the number of bias reports."
+        # Multiple VCFs: ensure each is indexed and open them separately.
+        vcf_handles = []
+        for fn in list_vcf:
+            check_vcf_index(fn)
+            vcf_handles.append(pysam.VariantFile(fn))
     # read the bias report
     list_bias_report = []
     for fn_assign_report in list_report:
@@ -249,12 +303,14 @@ if __name__ == "__main__":
         # fetch the gap balance information
         list_balance_delete = []
         list_balance_insert = []
-        for assign_SNP, assign_gap in list_bias_report:
+        for (assign_SNP, assign_gap), f_vcf in zip(list_bias_report, vcf_handles):
             balance_insert, balance_delete = calculate_gap_balance(assign_gap, f_vcf, boundary, 5)
             list_balance_insert.append(balance_insert)
             list_balance_delete.append(balance_delete)
 
-        balance_SNP    = list_balance_SNP
+        # In real mode, each entry from calculate_SNP_balance is [values],
+        # so unwrap the inner list to get a simple list of balances per report.
+        balance_SNP    = [entry[0] for entry in list_balance_SNP]
         balance_delete = list_balance_delete
         balance_insert = list_balance_insert
     else: # to plot the simulated reads, the first entry is the simulated balance information, then we can choose map or local_assignment
@@ -269,10 +325,13 @@ if __name__ == "__main__":
             list_plot_name += [name + '(assign)' for name in list_name]
     
         # fetch the gap balance information
-        balance_insert, balance_delete = calculate_gap_balance(list_bias_report[0][1], f_vcf, boundary, 14) # getting the simulated information
+        # First entry: simulated information, using its corresponding VCF
+        balance_insert, balance_delete = calculate_gap_balance(
+            list_bias_report[0][1], vcf_handles[0], boundary, 14
+        )
         list_balance_delete = [balance_delete]
         list_balance_insert = [balance_insert]
-        for assign_SNP, assign_gap in list_bias_report:
+        for (assign_SNP, assign_gap), f_vcf in zip(list_bias_report, vcf_handles):
             balance_insert, balance_delete = calculate_gap_balance(assign_gap, f_vcf, boundary, gap_choice)
             list_balance_insert.append(balance_insert)
             list_balance_delete.append(balance_delete)
