@@ -235,6 +235,15 @@ def main():
                 assert path_vcf != None
             except AssertionError:
                 catch_assert(parser, "<genome> and <vcf> should be specified when using --analyze")
+            # When running analyze directly, ensure that the BAM file is either
+            # explicitly provided or present at the default location.
+            if not os.path.exists(bam_file):
+                catch_assert(
+                    parser,
+                    "BAM file not found. Please specify --bam <file> explicitly "
+                    "or ensure it exists at the default path: "
+                    f"{path_output}/{sample_id}.{run_id}.sorted.bam",
+                )
             print("[Biastools] Analyze and plot...")
             command = ' '.join(["bash", path_module+"biastools_analysis.sh", path_ref, path_vcf, path_output, sample_id, str(thread), run_id, bool2str(flag_real), \
                                 bool2str(flag_naive), str(boundary), path_module, bam_file])
