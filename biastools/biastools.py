@@ -34,14 +34,59 @@ def catch_assert(parser, message):
     exit(1)
 
 
+def ensure_processed_vcf(path_ref, path_vcf, path_output, sample_id, path_module, parser):
+    """
+    Ensure that the processed heterozygous VCF (<out>/<sample_id>.het.vcf.gz) exists.
+    If it doesn't, regenerate it in the same way as in the simulation/analysis shell scripts.
+    """
+    het_vcf_path = path_output + '/' + sample_id + '.het.vcf.gz'
+    if os.path.exists(het_vcf_path):
+        return het_vcf_path
+
+    try:
+        assert path_ref is not None
+        assert path_vcf is not None
+    except AssertionError:
+        catch_assert(
+            parser,
+            "<genome> and <vcf> should be specified when using --analyze "
+            "if the processed VCF does not already exist in the output directory.",
+        )
+
+    prefix = path_output + '/' + sample_id
+    print("[Biastools] Prepare processed VCF for analysis...")
+    # Normalize the input VCF against the reference
+    subprocess.check_call([
+        'bcftools', 'norm',
+        '-f', path_ref,
+        path_vcf,
+        '-m', '+any',
+        '-Oz',
+        '-o', prefix + '.normalized.vcf.gz',
+    ])
+    subprocess.check_call(['bcftools', 'index', prefix + '.normalized.vcf.gz'])
+
+    # Filter heterozygous sites and index the resulting VCF
+    subprocess.check_call([
+        'python3',
+        path_module + 'filter_het_VCF.py',
+        '-v', prefix + '.normalized.vcf.gz',
+        '-o', het_vcf_path,
+    ])
+    subprocess.check_call(['tabix', '-p', 'vcf', het_vcf_path])
+
+    return het_vcf_path
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Simulation/Alignment/Analyzing/Prediction module of the Biastools v0.3.1")
-    parser.add_argument('--version', action='version', version='%(prog)s 0.3.1')
+    parser = argparse.ArgumentParser(description="Simulation/Alignment/Analyzing/Prediction module of the Biastools v0.3.2")
+    parser.add_argument('--version', action='version', version='%(prog)s 0.3.2')
     parser.add_argument('-o', '--out', help="Path to output directory ['out_dir'].", default="out_dir")
     parser.add_argument('-g', '--genome', help="Path to the reference genome.")
-    parser.add_argument('-v', '--vcf', help="Path to the personal vcf file.")
+    parser.add_argument('-v', '--vcf', nargs='+',
+                        help="Path(s) to VCF file(s). For simulation/align/single-run analyze, "
+                             "provide exactly one. For multi-report analyze, you may provide "
+                             "one VCF shared by all reports or one per report.")
     parser.add_argument('-s', '--sample_id', help="Sample ID ['sample'].", default="sample")
     parser.add_argument('-r', '--run_id', help="Run ID ['run'].", default="run")
     # Process options
@@ -71,11 +116,14 @@ def main():
     
     ##### Parameters for biastool_analysis
     path_output = args.out
-    path_ref   = args.genome
-    path_vcf   = args.vcf
-    sample_id  = args.sample_id
-    run_id     = args.run_id
-    bam_file   = args.bam
+    path_ref    = args.genome
+    vcf_list    = args.vcf  # may be None or a list of one/many paths
+    # For steps that only support a single VCF (simulate/align/single-run analyze),
+    # use the first entry when provided.
+    path_vcf    = vcf_list[0] if vcf_list else None
+    sample_id   = args.sample_id
+    run_id      = args.run_id
+    bam_file    = args.bam
     if bam_file == None:
         bam_file = path_output + '/' + sample_id + '.' + run_id + '.sorted.bam'
     
@@ -117,6 +165,17 @@ def main():
             assert len(list_report) == len(list_run_id)
         except AssertionError:
             catch_assert(parser, "Number of list --list_report and --list_run_id entries are inconsistent.")
+
+    # Multiple VCF paths are only meaningful for multi-report analyze mode,
+    # where each bias report can have its own VCF. For all other modes, require
+    # at most one VCF path.
+    if vcf_list and len(vcf_list) > 1:
+        if not (flag_analyze and list_report):
+            catch_assert(
+                parser,
+                "Multiple --vcf paths are only supported when using --analyze "
+                "together with --list_report/--list_run_id.",
+            )
 
     sim_report  = args.sim_report
     real_report = args.real_report
@@ -169,21 +228,62 @@ def main():
         subprocess.call(command, shell=True)
     if flag_analyze:
         if list_report != None:
+            # Multi-report indel balance plotting.
+            # If multiple VCFs are provided, pass them directly through to
+            # indel_balance_plot.py, one per report. Otherwise, ensure the
+            # processed VCF for this sample exists and use it for all reports.
+            if vcf_list and len(vcf_list) > 1:
+                if len(vcf_list) != len(list_report):
+                    catch_assert(
+                        parser,
+                        "When providing multiple --vcf paths, their number must "
+                        "match the number of --list_report entries.",
+                    )
+                vcf_args = ["-vcf"] + vcf_list
+            else:
+                # Ensure the processed VCF exists (or regenerate it) before plotting.
+                het_vcf_path = ensure_processed_vcf(
+                    path_ref=path_ref,
+                    path_vcf=path_vcf,
+                    path_output=path_output,
+                    sample_id=sample_id,
+                    path_module=path_module,
+                    parser=parser,
+                )
+                vcf_args = ["-vcf", het_vcf_path]
+
             print("[Biastools] Plot the indel balance plot for multiple bias reports...")
             if flag_real:
-                subprocess.call(['python3', path_module+'indel_balance_plot.py', "-lr"] + list_report + ["-ln"] + list_run_id + [  \
-                                            "-vcf", path_output+"/"+sample_id+".het.vcf.gz", "-bd", str(boundary), "-map", \
-                                            "-out", path_output+"/"+sample_id+"."+run_id+".real", "-real"])
+                subprocess.call(
+                    ['python3', path_module+'indel_balance_plot.py', "-lr"] + list_report
+                    + ["-ln"] + list_run_id
+                    + vcf_args
+                    + ["-bd", str(boundary), "-map",
+                       "-out", path_output+"/"+sample_id+"."+run_id+".real", "-real"]
+                )
             else:
-                subprocess.call(['python3', path_module+'indel_balance_plot.py', "-lr"] + list_report + ["-ln"] + list_run_id + [ \
-                                            "-vcf", path_output+"/"+sample_id+".het.vcf.gz", "-bd", str(boundary), "-map", \
-                                            "-out", path_output+"/"+sample_id+"."+run_id+".sim"])
+                subprocess.call(
+                    ['python3', path_module+'indel_balance_plot.py', "-lr"] + list_report
+                    + ["-ln"] + list_run_id
+                    + vcf_args
+                    + ["-bd", str(boundary), "-map",
+                       "-out", path_output+"/"+sample_id+"."+run_id+".sim"]
+                )
         else:
             try:
                 assert path_ref != None
                 assert path_vcf != None
             except AssertionError:
                 catch_assert(parser, "<genome> and <vcf> should be specified when using --analyze")
+            # When running analyze directly, ensure that the BAM file is either
+            # explicitly provided or present at the default location.
+            if not os.path.exists(bam_file):
+                catch_assert(
+                    parser,
+                    "BAM file not found. Please specify --bam <file> explicitly "
+                    "or ensure it exists at the default path: "
+                    f"{path_output}/{sample_id}.{run_id}.sorted.bam",
+                )
             print("[Biastools] Analyze and plot...")
             command = ' '.join(["bash", path_module+"biastools_analysis.sh", path_ref, path_vcf, path_output, sample_id, str(thread), run_id, bool2str(flag_real), \
                                 bool2str(flag_naive), str(boundary), path_module, bam_file])

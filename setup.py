@@ -1,8 +1,12 @@
 from distutils.core import setup
+
+with open("README.md", "r", encoding="utf-8") as f:
+    long_description = f.read()
+
 setup(
   name = 'biastools',
   packages = ['biastools'],
-  version = '0.3.1',
+  version = '0.3.2',
   license='MIT',
   description = 'The toolkits to analyze reference bias of short DNA read alignment.',
   author = 'Mao-Jan Lin',
