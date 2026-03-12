@@ -84,7 +84,7 @@ An example of a combined bias-by-allele-length plot:
 In case you want to compare bias reports across two different coordinate systems.  For example, alignments between HG002 and CHM13, or between chromosome 12 and chromosome 13, you can submit multiple VCF files using the plot merging feature.
 
 ```
-$ biastools --analyze -o <work_dir> -g <ref.fa> -s <sample_name> -r <run_id> \
+$ biastools --analyze --real -o <work_dir> -g <ref.fa> -s <sample_name> -r <run_id> \
                       -lr chr1.bias.all chr2.bias.all chr3.bias.all \
                       -ld chr1 chr2 chr3 \
                       --vcf chr1.vcf.gz chr2.vcf.gz chr3.vcf.gz
